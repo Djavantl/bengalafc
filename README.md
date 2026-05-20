@@ -43,7 +43,7 @@ A tela inicial foi criada para mostrar, de forma simples, os entregáveis da Spr
 
 ```bash
 flutter pub get
-flutter run -d chrome
+flutter run 
 ```
 
 Depois disso:
