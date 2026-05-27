@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "393025456721",
+    "project_id": "bengalafc-2ae0b",
+    "storage_bucket": "bengalafc-2ae0b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:393025456721:android:8ca24c571a055de6d4c670",
+        "android_client_info": {
+          "package_name": "com.example.bengalafc"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB__iVGLbcI891iYtQLksZ9Rp5E7la1UfQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

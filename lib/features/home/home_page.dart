@@ -1,9 +1,24 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/theme_notifier.dart';
+import '../scoring/views/score_page.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  int _selectedIndex = 0;
+
+  final _pages = const [
+    _HomeBody(),
+    Placeholder(),  // Time
+    Placeholder(),  // Jogadores
+    ScorePage(),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +34,7 @@ class HomePage extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleLarge,
                 children: [
                   const TextSpan(text: 'Bengala'),
-                  TextSpan(
+                  const TextSpan(
                     text: 'FC',
                     style: TextStyle(
                       color: AppColors.accent,
@@ -47,41 +62,11 @@ class HomePage extends StatelessWidget {
               ),
             ],
           ),
-          body: LayoutBuilder(
-            builder: (context, constraints) {
-              final isWide = constraints.maxWidth > 600;
-              return SingleChildScrollView(
-                padding: EdgeInsets.symmetric(
-                  horizontal: isWide ? 32 : 16,
-                  vertical: 20,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const _ScoreCard(),
-                    const SizedBox(height: 24),
-                    if (isWide)
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(child: _MyTeamSection()),
-                          const SizedBox(width: 16),
-                          Expanded(child: _RoundSection()),
-                        ],
-                      )
-                    else ...[
-                      _MyTeamSection(),
-                      const SizedBox(height: 16),
-                      _RoundSection(),
-                    ],
-                    const SizedBox(height: 32),
-                  ],
-                ),
-              );
-            },
-          ),
+          body: _pages[_selectedIndex],
           bottomNavigationBar: NavigationBar(
-            selectedIndex: 0,
+            selectedIndex: _selectedIndex,
+            onDestinationSelected: (index) =>
+                setState(() => _selectedIndex = index),
             destinations: const [
               NavigationDestination(
                 icon: Icon(Icons.home_outlined),
@@ -102,6 +87,49 @@ class HomePage extends StatelessWidget {
                 selectedIcon: Icon(Icons.leaderboard),
                 label: 'Ranking',
               ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ─── Home body extraído para widget separado ─────────────────────────────────
+
+class _HomeBody extends StatelessWidget {
+  const _HomeBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth > 600;
+        return SingleChildScrollView(
+          padding: EdgeInsets.symmetric(
+            horizontal: isWide ? 32 : 16,
+            vertical: 20,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _ScoreCard(),
+              const SizedBox(height: 24),
+              if (isWide)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _MyTeamSection()),
+                    const SizedBox(width: 16),
+                    Expanded(child: _RoundSection()),
+                  ],
+                )
+              else ...[
+                _MyTeamSection(),
+                const SizedBox(height: 16),
+                _RoundSection(),
+              ],
+              const SizedBox(height: 32),
             ],
           ),
         );
@@ -191,12 +219,12 @@ class _ScoreCard extends StatelessWidget {
 class _MyTeamSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return const Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionTitle(title: 'Meu Time'),
-        const SizedBox(height: 10),
-        const _MyTeamCard(),
+        _SectionTitle(title: 'Meu Time'),
+        SizedBox(height: 10),
+        _MyTeamCard(),
       ],
     );
   }
@@ -262,12 +290,12 @@ class _MyTeamCard extends StatelessWidget {
 class _RoundSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return const Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionTitle(title: 'Rodada Atual'),
-        const SizedBox(height: 10),
-        const _RoundCard(),
+        _SectionTitle(title: 'Rodada Atual'),
+        SizedBox(height: 10),
+        _RoundCard(),
       ],
     );
   }
@@ -329,8 +357,8 @@ class _SectionTitle extends StatelessWidget {
     return Text(
       title,
       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-        fontWeight: FontWeight.w700,
-      ),
+            fontWeight: FontWeight.w700,
+          ),
     );
   }
 }
