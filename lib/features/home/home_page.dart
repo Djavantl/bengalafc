@@ -4,7 +4,14 @@ import '../../core/theme/theme_notifier.dart';
 import '../scoring/views/score_page.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({
+    super.key,
+    this.userName,
+    this.onSignOut,
+  });
+
+  final String? userName;
+  final VoidCallback? onSignOut;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -53,6 +60,12 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             actions: [
+              if (widget.onSignOut != null)
+                IconButton(
+                  tooltip: 'Sair',
+                  icon: const Icon(Icons.logout),
+                  onPressed: widget.onSignOut,
+                ),
               IconButton(
                 tooltip: isDark ? 'Modo claro' : 'Modo escuro',
                 icon: Icon(
@@ -62,7 +75,9 @@ class _HomePageState extends State<HomePage> {
               ),
             ],
           ),
-          body: _pages[_selectedIndex],
+          body: _selectedIndex == 0
+              ? _HomeBody(userName: widget.userName)
+              : _pages[_selectedIndex],
           bottomNavigationBar: NavigationBar(
             selectedIndex: _selectedIndex,
             onDestinationSelected: (index) =>
@@ -98,7 +113,9 @@ class _HomePageState extends State<HomePage> {
 // ─── Home body extraído para widget separado ─────────────────────────────────
 
 class _HomeBody extends StatelessWidget {
-  const _HomeBody();
+  const _HomeBody({this.userName});
+
+  final String? userName;
 
   @override
   Widget build(BuildContext context) {
@@ -113,6 +130,15 @@ class _HomeBody extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (userName != null) ...[
+                Text(
+                  'Ola, $userName',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 12),
+              ],
               const _ScoreCard(),
               const SizedBox(height: 24),
               if (isWide)
