@@ -3,15 +3,19 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/theme_notifier.dart';
 import '../scoring/views/score_page.dart';
 
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
+
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
+
 
   final _pages = const [
     _HomeBody(),
@@ -20,12 +24,14 @@ class _HomePageState extends State<HomePage> {
     ScorePage(),
   ];
 
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
       builder: (context, mode, _) {
         final isDark = mode == ThemeMode.dark;
+
 
         return Scaffold(
           appBar: AppBar(
@@ -83,9 +89,9 @@ class _HomePageState extends State<HomePage> {
                 label: 'Jogadores',
               ),
               NavigationDestination(
-                icon: Icon(Icons.leaderboard_outlined),
-                selectedIcon: Icon(Icons.leaderboard),
-                label: 'Ranking',
+                icon: Icon(Icons.emoji_events_outlined),
+                selectedIcon: Icon(Icons.emoji_events),
+                label: 'Pontuação',
               ),
             ],
           ),
@@ -95,10 +101,13 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
+
 // ─── Home body extraído para widget separado ─────────────────────────────────
+
 
 class _HomeBody extends StatelessWidget {
   const _HomeBody();
+
 
   @override
   Widget build(BuildContext context) {
@@ -138,8 +147,10 @@ class _HomeBody extends StatelessWidget {
   }
 }
 
+
 class _ScoreCard extends StatelessWidget {
   const _ScoreCard();
+
 
   @override
   Widget build(BuildContext context) {
@@ -216,6 +227,7 @@ class _ScoreCard extends StatelessWidget {
   }
 }
 
+
 class _MyTeamSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -230,8 +242,10 @@ class _MyTeamSection extends StatelessWidget {
   }
 }
 
+
 class _MyTeamCard extends StatelessWidget {
   const _MyTeamCard();
+
 
   @override
   Widget build(BuildContext context) {
@@ -239,6 +253,7 @@ class _MyTeamCard extends StatelessWidget {
     final cardBg = Theme.of(context).brightness == Brightness.dark
         ? cs.surfaceContainerHighest
         : const Color(0xFFEEEEEE);
+
 
     return Container(
       decoration: BoxDecoration(
@@ -287,6 +302,7 @@ class _MyTeamCard extends StatelessWidget {
   }
 }
 
+
 class _RoundSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -301,8 +317,10 @@ class _RoundSection extends StatelessWidget {
   }
 }
 
+
 class _RoundCard extends StatelessWidget {
   const _RoundCard();
+
 
   @override
   Widget build(BuildContext context) {
@@ -310,6 +328,7 @@ class _RoundCard extends StatelessWidget {
     final cardBg = Theme.of(context).brightness == Brightness.dark
         ? cs.surfaceContainerHighest
         : const Color(0xFFEEEEEE);
+
 
     return Container(
       decoration: BoxDecoration(
@@ -348,9 +367,11 @@ class _RoundCard extends StatelessWidget {
   }
 }
 
+
 class _SectionTitle extends StatelessWidget {
   final String title;
   const _SectionTitle({required this.title});
+
 
   @override
   Widget build(BuildContext context) {
