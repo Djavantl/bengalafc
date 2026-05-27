@@ -1,84 +1,89 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:bengalafc/core/services/scoring_service.dart';
 import 'package:bengalafc/features/scoring/models/user_phase_score.dart';
+import 'package:bengalafc/features/scoring/viewmodels/scoring_notifier.dart';
 
-class MockFirebaseFirestore extends Mock implements FirebaseFirestore {}
-class MockCollectionReference extends Mock
-    implements CollectionReference<Map<String, dynamic>> {}
-class MockQuery extends Mock
-    implements Query<Map<String, dynamic>> {}
-class MockQuerySnapshot extends Mock
-    implements QuerySnapshot<Map<String, dynamic>> {}
-class MockQueryDocumentSnapshot extends Mock
-    implements QueryDocumentSnapshot<Map<String, dynamic>> {}
+class MockScoringService extends Mock implements ScoringService {}
 
 void main() {
-  late MockFirebaseFirestore mockFirestore;
-  late MockCollectionReference mockCollection;
-  late MockQuery mockQuery;
-  late MockQuerySnapshot mockSnapshot;
-  late ScoringService service;
+  late MockScoringService mockService;
+  late ScoringNotifier notifier;
 
   setUp(() {
-    mockFirestore = MockFirebaseFirestore();
-    mockCollection = MockCollectionReference();
-    mockQuery = MockQuery();
-    mockSnapshot = MockQuerySnapshot();
-    service = ScoringService(db: mockFirestore);
+    mockService = MockScoringService();
+    notifier = ScoringNotifier(mockService);
   });
 
-  group('ScoringService', () {
-    test('retorna lista de UserPhaseScore quando Firestore retorna dados', () async {
-      final fakeDoc = MockQueryDocumentSnapshot();
-      when(() => fakeDoc.data()).thenReturn({
-        'userId': 'user123',
-        'phaseNumber': 1,
-        'totalPoints': 87.5,
-        'rankPosition': 3,
-      });
+  final fakeScores = [
+    UserPhaseScore(
+      userId: 'user_1',
+      phaseNumber: 1,
+      totalPoints: 85.0,
+      rankPosition: 3,
+    ),
+    UserPhaseScore(
+      userId: 'user_1',
+      phaseNumber: 2,
+      totalPoints: 60.0,
+      rankPosition: 5,
+    ),
+  ];
 
-      when(() => mockFirestore.collection('user_phase_scores'))
-          .thenReturn(mockCollection);
-      when(() => mockCollection.where('userId', isEqualTo: 'user123'))
-          .thenReturn(mockQuery);
-      when(() => mockQuery.orderBy('phaseNumber', descending: true))
-          .thenReturn(mockQuery);
-      when(() => mockQuery.get()).thenAnswer((_) async => mockSnapshot);
-      when(() => mockSnapshot.docs).thenReturn([fakeDoc]);
-
-      final result = await service.getScores('user123');
-
-      expect(result, isA<List<UserPhaseScore>>());
-      expect(result.length, 1);
-      expect(result.first.totalPoints, 87.5);
+  group('ScoringNotifier', () {
+    test('estado inicial é idle', () {
+      expect(notifier.status, ScoringStatus.idle);
+      expect(notifier.scores, isEmpty);
+      expect(notifier.errorMessage, isNull);
     });
 
-    test('retorna lista vazia quando não há documentos', () async {
-      when(() => mockFirestore.collection('user_phase_scores'))
-          .thenReturn(mockCollection);
-      when(() => mockCollection.where('userId', isEqualTo: 'sem_dados'))
-          .thenReturn(mockQuery);
-      when(() => mockQuery.orderBy('phaseNumber', descending: true))
-          .thenReturn(mockQuery);
-      when(() => mockQuery.get()).thenAnswer((_) async => mockSnapshot);
-      when(() => mockSnapshot.docs).thenReturn([]);
+    test('load com sucesso atualiza status para success e popula scores', () async {
+      when(() => mockService.getScores('user_1'))
+          .thenAnswer((_) async => fakeScores);
 
-      final result = await service.getScores('sem_dados');
-      expect(result, isEmpty);
+      await notifier.load('user_1');
+
+      expect(notifier.status, ScoringStatus.success);
+      expect(notifier.scores.length, 2);
+      expect(notifier.scores.first.phaseNumber, 1);
     });
 
-    test('lança exceção quando Firestore falha', () async {
-      when(() => mockFirestore.collection('user_phase_scores'))
-          .thenReturn(mockCollection);
-      when(() => mockCollection.where('userId', isEqualTo: 'user123'))
-          .thenReturn(mockQuery);
-      when(() => mockQuery.orderBy('phaseNumber', descending: true))
-          .thenReturn(mockQuery);
-      when(() => mockQuery.get()).thenThrow(Exception('Firestore offline'));
+    test('totalPoints soma corretamente', () async {
+      when(() => mockService.getScores('user_1'))
+          .thenAnswer((_) async => fakeScores);
 
-      expect(() => service.getScores('user123'), throwsException);
+      await notifier.load('user_1');
+
+      expect(notifier.totalPoints, 145.0);
+    });
+
+    test('bestRank retorna o menor rankPosition', () async {
+      when(() => mockService.getScores('user_1'))
+          .thenAnswer((_) async => fakeScores);
+
+      await notifier.load('user_1');
+
+      expect(notifier.bestRank, 3);
+    });
+
+    test('load com lista vazia mantém status success e scores vazio', () async {
+      when(() => mockService.getScores('user_1'))
+          .thenAnswer((_) async => []);
+
+      await notifier.load('user_1');
+
+      expect(notifier.status, ScoringStatus.success);
+      expect(notifier.scores, isEmpty);
+    });
+
+    test('load com erro atualiza status para error', () async {
+      when(() => mockService.getScores('user_1'))
+          .thenThrow(Exception('Firestore offline'));
+
+      await notifier.load('user_1');
+
+      expect(notifier.status, ScoringStatus.error);
+      expect(notifier.errorMessage, isNotNull);
     });
   });
 }
