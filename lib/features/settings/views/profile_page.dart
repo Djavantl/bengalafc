@@ -189,19 +189,30 @@ class _ProfilePageState extends State<ProfilePage> {
     setState(() => _isLoading = true);
 
     try {
-      // 1. Save user details in Firebase
       await _authRepository.updateProfile(
         name: _nameController.text.trim(),
       );
 
-      // 2. Handle avatar updates
       if (_tempSelectedBase64 != null) {
         if (_tempSelectedBase64!.isEmpty) {
-          // Cleared/Removed image
           await AvatarService.clearLocalAvatar(widget.user.id);
         } else {
-          // Saved/Selected new image
-          await AvatarService.saveLocalAvatar(widget.user.id, _tempSelectedBase64!);
+          await AvatarService.saveLocalAvatar(
+            widget.user.id,
+            _tempSelectedBase64!,
+          );
+        }
+
+        if (mounted) {
+          setState(() {
+            _localAvatarBase64 =
+                _tempSelectedBase64!.isEmpty ? null : _tempSelectedBase64;
+            _tempSelectedBase64 = null;
+            _tempSelectedBytes = null;
+            _hasCustomAvatar = _localAvatarBase64 != null ||
+                (widget.user.avatarUrl != null &&
+                    widget.user.avatarUrl!.isNotEmpty);
+          });
         }
       }
 
@@ -219,6 +230,16 @@ class _ProfilePageState extends State<ProfilePage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(e.message),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Erro inesperado ao salvar foto: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Nao foi possivel salvar a foto de perfil.'),
             backgroundColor: Colors.red,
           ),
         );
