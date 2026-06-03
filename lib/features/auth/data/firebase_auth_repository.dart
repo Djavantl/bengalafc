@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 
@@ -72,6 +73,7 @@ class FirebaseAuthRepository {
         throw const AuthException('Nao foi possivel criar o usuario.');
       }
 
+      await _syncUserDocument(appUser);
       return appUser;
     } on FirebaseAuthException catch (error) {
       throw AuthException(_messageFromCode(error));
@@ -105,6 +107,7 @@ class FirebaseAuthRepository {
         throw const AuthException('Nao foi possivel carregar o usuario.');
       }
 
+      await _syncUserDocument(appUser);
       return appUser;
     } on FirebaseAuthException catch (error) {
       throw AuthException(_messageFromCode(error));
@@ -123,6 +126,7 @@ class FirebaseAuthRepository {
   Future<AppUserModel> updateProfile({
     String? name,
     String? avatarUrl,
+    bool clearAvatar = false,
   }) async {
     if (_useMock) {
       if (_currentMockUser == null) {
@@ -132,7 +136,7 @@ class FirebaseAuthRepository {
         id: _currentMockUser!.id,
         name: name ?? _currentMockUser!.name,
         email: _currentMockUser!.email,
-        avatarUrl: avatarUrl ?? _currentMockUser!.avatarUrl,
+        avatarUrl: clearAvatar ? null : avatarUrl ?? _currentMockUser!.avatarUrl,
         createdAt: _currentMockUser!.createdAt,
         updatedAt: DateTime.now(),
       );
@@ -146,18 +150,27 @@ class FirebaseAuthRepository {
       }
 
       if (name != null && name.trim().isNotEmpty) {
-        await user.updateDisplayName(name.trim());
+        await user.updateDisplayName(name.trim()).timeout(
+              const Duration(seconds: 15),
+            );
       }
       if (avatarUrl != null) {
-        await user.updatePhotoURL(avatarUrl);
+        await user.updatePhotoURL(avatarUrl).timeout(
+              const Duration(seconds: 15),
+            );
+      } else if (clearAvatar) {
+        await user.updatePhotoURL(null).timeout(
+              const Duration(seconds: 15),
+            );
       }
 
-      await user.reload();
+      await user.reload().timeout(const Duration(seconds: 15));
       final updatedUser = _firebaseAuth.currentUser;
       final appUser = _mapUser(updatedUser);
       if (appUser == null) {
         throw const AuthException('Erro ao atualizar dados do usuário.');
       }
+      await _syncUserDocument(appUser);
       return appUser;
     } on FirebaseAuthException catch (error) {
       throw AuthException(_messageFromCode(error));
@@ -178,6 +191,19 @@ class FirebaseAuthRepository {
       createdAt: user.metadata.creationTime ?? now,
       updatedAt: user.metadata.lastSignInTime ?? now,
     );
+  }
+
+  Future<void> _syncUserDocument(AppUserModel user) async {
+    if (_useMock) return;
+
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.id).set(
+        user.toMap(),
+        SetOptions(merge: true),
+      ).timeout(const Duration(seconds: 15));
+    } catch (_) {
+      // Auth should keep working even if the ranking profile mirror is unavailable.
+    }
   }
 
   String _messageFromCode(FirebaseAuthException error) {
