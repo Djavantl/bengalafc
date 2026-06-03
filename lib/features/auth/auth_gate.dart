@@ -37,7 +37,7 @@ class _AuthGateState extends State<AuthGate> {
         }
 
         return HomePage(
-          userName: user.name,
+          user: user,
           onSignOut: _handleSignOut,
         );
       },

@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Precisamos de acesso à câmera para tirar sua foto de perfil.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Precisamos de acesso à galeria para escolher sua foto de perfil.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Precisamos de acesso ao microfone.</string>
 </dict>
 </plist>

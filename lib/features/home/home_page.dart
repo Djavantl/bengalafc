@@ -2,15 +2,18 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/theme_notifier.dart';
 import '../scoring/views/score_page.dart';
+import '../settings/models/app_user_model.dart';
+import '../settings/views/profile_page.dart';
+import '../settings/views/widgets/user_avatar.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
-    this.userName,
+    required this.user,
     this.onSignOut,
   });
 
-  final String? userName;
+  final AppUserModel user;
   final VoidCallback? onSignOut;
 
   @override
@@ -60,12 +63,25 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             actions: [
-              if (widget.onSignOut != null)
-                IconButton(
-                  tooltip: 'Sair',
-                  icon: const Icon(Icons.logout),
-                  onPressed: widget.onSignOut,
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Center(
+                  child: UserAvatar(
+                    user: widget.user,
+                    radius: 18,
+                    onTap: () async {
+                      final updated = await Navigator.of(context).push<bool>(
+                        MaterialPageRoute(
+                          builder: (_) => ProfilePage(user: widget.user),
+                        ),
+                      );
+                      if (updated == true && mounted) {
+                        setState(() {});
+                      }
+                    },
+                  ),
                 ),
+              ),
               IconButton(
                 tooltip: isDark ? 'Modo claro' : 'Modo escuro',
                 icon: Icon(
@@ -73,10 +89,16 @@ class _HomePageState extends State<HomePage> {
                 ),
                 onPressed: themeNotifier.toggle,
               ),
+              if (widget.onSignOut != null)
+                IconButton(
+                  tooltip: 'Sair',
+                  icon: const Icon(Icons.logout),
+                  onPressed: widget.onSignOut,
+                ),
             ],
           ),
           body: _selectedIndex == 0
-              ? _HomeBody(userName: widget.userName)
+              ? _HomeBody(userName: widget.user.name)
               : _pages[_selectedIndex],
           bottomNavigationBar: NavigationBar(
             selectedIndex: _selectedIndex,

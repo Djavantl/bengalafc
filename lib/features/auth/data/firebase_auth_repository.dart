@@ -1,19 +1,43 @@
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import '../../settings/models/app_user_model.dart';
 
 class FirebaseAuthRepository {
   FirebaseAuthRepository({FirebaseAuth? firebaseAuth})
-      : _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance;
+      : _useMock = Firebase.apps.isEmpty,
+        _firebaseAuth = (firebaseAuth == null && Firebase.apps.isNotEmpty)
+            ? FirebaseAuth.instance
+            : firebaseAuth;
 
-  final FirebaseAuth _firebaseAuth;
+  final FirebaseAuth? _firebaseAuth;
+  final bool _useMock;
 
-  Stream<AppUserModel?> authStateChanges() {
-    return _firebaseAuth.authStateChanges().map(_mapUser);
+  static AppUserModel? _currentMockUser = AppUserModel(
+    id: 'mock_user_123',
+    name: 'Nome de Teste',
+    email: 'teste@bengalafc.com',
+    avatarUrl: null,
+    createdAt: DateTime.now(),
+    updatedAt: DateTime.now(),
+  );
+
+  static final StreamController<AppUserModel?> _mockUserStreamController =
+      StreamController<AppUserModel?>.broadcast();
+
+  Stream<AppUserModel?> authStateChanges() async* {
+    if (_useMock) {
+      yield _currentMockUser;
+      yield* _mockUserStreamController.stream;
+      return;
+    }
+    yield* _firebaseAuth!.userChanges().map(_mapUser);
   }
 
   AppUserModel? currentUser() {
-    return _mapUser(_firebaseAuth.currentUser);
+    if (_useMock) return _currentMockUser;
+    return _mapUser(_firebaseAuth!.currentUser);
   }
 
   Future<AppUserModel> signUp({
@@ -21,8 +45,20 @@ class FirebaseAuthRepository {
     required String email,
     required String password,
   }) async {
+    if (_useMock) {
+      _currentMockUser = AppUserModel(
+        id: 'mock_user_123',
+        name: name,
+        email: email,
+        avatarUrl: null,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      _mockUserStreamController.add(_currentMockUser);
+      return _currentMockUser!;
+    }
     try {
-      final credential = await _firebaseAuth.createUserWithEmailAndPassword(
+      final credential = await _firebaseAuth!.createUserWithEmailAndPassword(
         email: email.trim().toLowerCase(),
         password: password,
       );
@@ -46,8 +82,20 @@ class FirebaseAuthRepository {
     required String email,
     required String password,
   }) async {
+    if (_useMock) {
+      _currentMockUser = AppUserModel(
+        id: 'mock_user_123',
+        name: _currentMockUser?.name ?? 'Nome de Teste',
+        email: email,
+        avatarUrl: _currentMockUser?.avatarUrl,
+        createdAt: _currentMockUser?.createdAt ?? DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      _mockUserStreamController.add(_currentMockUser);
+      return _currentMockUser!;
+    }
     try {
-      final credential = await _firebaseAuth.signInWithEmailAndPassword(
+      final credential = await _firebaseAuth!.signInWithEmailAndPassword(
         email: email.trim().toLowerCase(),
         password: password,
       );
@@ -64,7 +112,56 @@ class FirebaseAuthRepository {
   }
 
   Future<void> signOut() async {
-    await _firebaseAuth.signOut();
+    if (_useMock) {
+      _currentMockUser = null;
+      _mockUserStreamController.add(null);
+      return;
+    }
+    await _firebaseAuth!.signOut();
+  }
+
+  Future<AppUserModel> updateProfile({
+    String? name,
+    String? avatarUrl,
+  }) async {
+    if (_useMock) {
+      if (_currentMockUser == null) {
+        throw const AuthException('Nenhum usuário logado.');
+      }
+      _currentMockUser = AppUserModel(
+        id: _currentMockUser!.id,
+        name: name ?? _currentMockUser!.name,
+        email: _currentMockUser!.email,
+        avatarUrl: avatarUrl ?? _currentMockUser!.avatarUrl,
+        createdAt: _currentMockUser!.createdAt,
+        updatedAt: DateTime.now(),
+      );
+      _mockUserStreamController.add(_currentMockUser);
+      return _currentMockUser!;
+    }
+    try {
+      final user = _firebaseAuth!.currentUser;
+      if (user == null) {
+        throw const AuthException('Nenhum usuário logado.');
+      }
+
+      if (name != null && name.trim().isNotEmpty) {
+        await user.updateDisplayName(name.trim());
+      }
+      if (avatarUrl != null) {
+        await user.updatePhotoURL(avatarUrl);
+      }
+
+      await user.reload();
+      final updatedUser = _firebaseAuth.currentUser;
+      final appUser = _mapUser(updatedUser);
+      if (appUser == null) {
+        throw const AuthException('Erro ao atualizar dados do usuário.');
+      }
+      return appUser;
+    } on FirebaseAuthException catch (error) {
+      throw AuthException(_messageFromCode(error));
+    }
   }
 
   AppUserModel? _mapUser(User? user) {
