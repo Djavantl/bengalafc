@@ -1,6 +1,5 @@
 import 'dart:convert';
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -8,19 +7,12 @@ class ApiClient {
   ApiClient._privateConstructor();
   static final ApiClient instance = ApiClient._privateConstructor();
 
-  static const bool useProduction = false; // Mude para false para testar localmente
-
   String get baseUrl {
-    if (useProduction) {
-      return 'https://bengalafc-api-production.up.railway.app';
+    final env = dotenv.env['APP_ENV']?.trim().toLowerCase() ?? 'production';
+    if (env == 'local') {
+      return dotenv.env['API_URL_LOCAL'] ?? 'http://localhost:8000';
     }
-    if (kIsWeb) {
-      return 'http://localhost:8000';
-    } else if (Platform.isAndroid) {
-      return 'http://10.0.2.2:8000';
-    } else {
-      return 'http://127.0.0.1:8000';
-    }
+    return dotenv.env['API_URL_PRODUCTION'] ?? 'https://bengalafc-api-production.up.railway.app';
   }
 
   String? _token;
