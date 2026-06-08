@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-
-import '../data/firebase_auth_repository.dart';
-import 'sign_up_page.dart';
+import '../../../core/services/pkce_helper.dart';
+import '../data/auth_repository.dart';
+import 'web_auth_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -11,39 +11,61 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final _formKey = GlobalKey<FormState>();
-  final _authRepository = FirebaseAuthRepository();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-
+  final _authRepository = AuthRepository();
   bool _isLoading = false;
-  bool _obscurePassword = true;
 
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-
+  Future<void> _loginWithPkce() async {
     setState(() => _isLoading = true);
+
     try {
-      await _authRepository.signIn(
-        email: _emailController.text,
-        password: _passwordController.text,
+      final codeVerifier = PkceHelper.generateCodeVerifier();
+      final codeChallenge = PkceHelper.generateCodeChallenge(codeVerifier);
+      final authUrl = _authRepository.getAuthorizationUrl(codeChallenge);
+      const redirectUri = 'http://localhost:8000/callback';
+
+      if (!mounted) return;
+      final code = await Navigator.of(context).push<String>(
+        MaterialPageRoute(
+          builder: (_) => WebAuthPage(
+            authUrl: authUrl,
+            redirectUri: redirectUri,
+          ),
+        ),
       );
+
+      if (code == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      await _authRepository.signInWithCode(
+        code: code,
+        codeVerifier: codeVerifier,
+      );
+
       if (!mounted) return;
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
     } on AuthException catch (error) {
       _showError(error.message);
+    } catch (e) {
+      _showError('Erro ao realizar login. Verifique sua conexão.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _openWebsiteRegister() {
+    final registerUrl = '${_authRepository.getAuthorizationUrl("dummy").split("/o/authorize/").first}/';
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => WebAuthPage(
+          authUrl: registerUrl,
+          redirectUri: 'http://localhost:8000/callback',
+        ),
+      ),
+    );
   }
 
   void _showError(String message) {
@@ -52,114 +74,95 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  void _openSignUp() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const SignUpPage(),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Entrar')),
       body: SafeArea(
         child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Icon(Icons.login, size: 52, color: cs.primary),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Acessar conta',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.headlineMedium
-                          ?.copyWith(fontWeight: FontWeight.w800),
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Spacer(),
+                  Icon(Icons.sports_soccer, size: 80, color: cs.primary),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Bengala FC',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: cs.primary,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'O Fantasy Game oficial do Bengala',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Use o e-mail e senha cadastrados neste aparelho.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: cs.onSurfaceVariant),
-                    ),
-                    const SizedBox(height: 28),
-                    TextFormField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: 'E-mail',
-                        prefixIcon: Icon(Icons.mail_outline),
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (value) {
-                        final email = value?.trim() ?? '';
-                        if (!email.contains('@') || !email.contains('.')) {
-                          return 'Informe um e-mail valido.';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: _obscurePassword,
-                      textInputAction: TextInputAction.done,
-                      onFieldSubmitted: (_) => _submit(),
-                      decoration: InputDecoration(
-                        labelText: 'Senha',
-                        prefixIcon: const Icon(Icons.lock_outline),
-                        border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          tooltip: _obscurePassword
-                              ? 'Mostrar senha'
-                              : 'Ocultar senha',
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
+                  ),
+                  const Spacer(),
+                  if (_isLoading)
+                    const Center(
+                      child: Column(
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 16),
+                          Text(
+                            'Autenticando com o servidor...',
+                            style: TextStyle(fontWeight: FontWeight.w500),
                           ),
-                          onPressed: () {
-                            setState(() {
-                              _obscurePassword = !_obscurePassword;
-                            });
-                          },
+                        ],
+                      ),
+                    )
+                  else ...[
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      validator: (value) {
-                        if ((value ?? '').isEmpty) {
-                          return 'Informe sua senha.';
-                        }
-                        return null;
-                      },
+                      onPressed: _loginWithPkce,
+                      icon: const Icon(Icons.login),
+                      label: const Text(
+                        'Entrar com o Bengala FC',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 22),
-                    FilledButton.icon(
-                      onPressed: _isLoading ? null : _submit,
-                      icon: _isLoading
-                          ? const SizedBox.square(
-                              dimension: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.login),
-                      label: const Text('Entrar'),
-                    ),
-                    const SizedBox(height: 10),
-                    TextButton(
-                      onPressed: _isLoading ? null : _openSignUp,
-                      child: const Text('Nao tem uma conta? Cadastre-se'),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: _openWebsiteRegister,
+                      icon: const Icon(Icons.open_in_browser),
+                      label: const Text(
+                        'Criar conta no site',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ],
-                ),
+                  const Spacer(),
+                ],
               ),
             ),
           ),

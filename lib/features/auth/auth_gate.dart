@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../home/home_page.dart';
 import '../settings/models/app_user_model.dart';
-import 'data/firebase_auth_repository.dart';
+import 'data/auth_repository.dart';
 import 'pages/login_page.dart';
 
 class AuthGate extends StatefulWidget {
@@ -13,7 +13,7 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
-  final _authRepository = FirebaseAuthRepository();
+  final _authRepository = AuthRepository();
 
   Future<void> _handleSignOut() async {
     await _authRepository.signOut();

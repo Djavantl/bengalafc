@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/theme/app_colors.dart';
-import '../../auth/data/firebase_auth_repository.dart';
+import '../../auth/data/auth_repository.dart';
 import '../models/app_user_model.dart';
 import '../services/avatar_service.dart';
 
@@ -19,7 +19,7 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
-  final _authRepository = FirebaseAuthRepository();
+  final _authRepository = AuthRepository();
   final _picker = ImagePicker();
 
   String? _localAvatarBase64;
