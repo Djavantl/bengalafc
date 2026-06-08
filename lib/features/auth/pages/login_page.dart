@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/services/api_client.dart';
 import '../../../core/services/pkce_helper.dart';
 import '../data/auth_repository.dart';
 import 'web_auth_page.dart';
@@ -21,7 +22,7 @@ class _LoginPageState extends State<LoginPage> {
       final codeVerifier = PkceHelper.generateCodeVerifier();
       final codeChallenge = PkceHelper.generateCodeChallenge(codeVerifier);
       final authUrl = _authRepository.getAuthorizationUrl(codeChallenge);
-      const redirectUri = 'http://localhost:8000/callback';
+      final redirectUri = '${ApiClient.instance.baseUrl}/callback';
 
       if (!mounted) return;
       final code = await Navigator.of(context).push<String>(
@@ -58,11 +59,12 @@ class _LoginPageState extends State<LoginPage> {
 
   void _openWebsiteRegister() {
     final registerUrl = '${_authRepository.getAuthorizationUrl("dummy").split("/o/authorize/").first}/';
+    final redirectUri = '${ApiClient.instance.baseUrl}/callback';
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => WebAuthPage(
           authUrl: registerUrl,
-          redirectUri: 'http://localhost:8000/callback',
+          redirectUri: redirectUri,
         ),
       ),
     );

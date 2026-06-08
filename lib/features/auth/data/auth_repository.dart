@@ -28,7 +28,8 @@ class AuthRepository {
 
   String getAuthorizationUrl(String challenge) {
     final baseUrl = ApiClient.instance.baseUrl;
-    return '$baseUrl/o/authorize/?response_type=code&client_id=bengalafc-mobile&redirect_uri=http://localhost:8000/callback&code_challenge=$challenge&code_challenge_method=S256';
+    final redirectUri = '$baseUrl/callback';
+    return '$baseUrl/o/authorize/?response_type=code&client_id=bengalafc-mobile&redirect_uri=${Uri.encodeComponent(redirectUri)}&code_challenge=$challenge&code_challenge_method=S256';
   }
 
   Future<AppUserModel> signInWithCode({
@@ -36,10 +37,11 @@ class AuthRepository {
     required String codeVerifier,
   }) async {
     try {
+      final redirectUri = '${ApiClient.instance.baseUrl}/callback';
       final body = {
         'grant_type': 'authorization_code',
         'code': code,
-        'redirect_uri': 'http://localhost:8000/callback',
+        'redirect_uri': redirectUri,
         'client_id': 'bengalafc-mobile',
         'code_verifier': codeVerifier,
       };
