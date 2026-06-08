@@ -1,16 +1,21 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/theme_notifier.dart';
+import '../lineup/data/lineup_local_storage.dart';
+import '../lineup/views/lineup_page.dart';
 import '../scoring/views/score_page.dart';
+import '../settings/models/app_user_model.dart';
+import '../settings/views/profile_page.dart';
+import '../settings/views/widgets/user_avatar.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({
     super.key,
-    this.userName,
+    required this.user,
     this.onSignOut,
   });
 
-  final String? userName;
+  final AppUserModel user;
   final VoidCallback? onSignOut;
 
   @override
@@ -18,14 +23,23 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  int _selectedIndex = 0;
+  final _lineupStorage = LineupLocalStorage();
 
-  final _pages = const [
-    _HomeBody(),
-    Placeholder(),  // Time
-    Placeholder(),  // Jogadores
-    ScorePage(),
-  ];
+  int _selectedIndex = 0;
+  LineupHomeSummary? _lineupSummary;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLineupSummary();
+  }
+
+  Future<void> _loadLineupSummary() async {
+    final summary = await _lineupStorage.loadSummary();
+    if (!mounted) return;
+
+    setState(() => _lineupSummary = summary);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,12 +74,25 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             actions: [
-              if (widget.onSignOut != null)
-                IconButton(
-                  tooltip: 'Sair',
-                  icon: const Icon(Icons.logout),
-                  onPressed: widget.onSignOut,
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Center(
+                  child: UserAvatar(
+                    user: widget.user,
+                    radius: 18,
+                    onTap: () async {
+                      final updated = await Navigator.of(context).push<bool>(
+                        MaterialPageRoute(
+                          builder: (_) => ProfilePage(user: widget.user),
+                        ),
+                      );
+                      if (updated == true && mounted) {
+                        setState(() {});
+                      }
+                    },
+                  ),
                 ),
+              ),
               IconButton(
                 tooltip: isDark ? 'Modo claro' : 'Modo escuro',
                 icon: Icon(
@@ -73,15 +100,27 @@ class _HomePageState extends State<HomePage> {
                 ),
                 onPressed: themeNotifier.toggle,
               ),
+              if (widget.onSignOut != null)
+                IconButton(
+                  tooltip: 'Sair',
+                  icon: const Icon(Icons.logout),
+                  onPressed: widget.onSignOut,
+                ),
             ],
           ),
           body: _selectedIndex == 0
-              ? _HomeBody(userName: widget.userName)
-              : _pages[_selectedIndex],
+              ? _HomeBody(
+                  userName: widget.user.name,
+                  lineupSummary: _lineupSummary,
+                  onBuildTeam: () => setState(() => _selectedIndex = 1),
+                )
+              : _buildPage(_selectedIndex),
           bottomNavigationBar: NavigationBar(
             selectedIndex: _selectedIndex,
-            onDestinationSelected: (index) =>
-                setState(() => _selectedIndex = index),
+            onDestinationSelected: (index) {
+              setState(() => _selectedIndex = index);
+              if (index == 0) _loadLineupSummary();
+            },
             destinations: const [
               NavigationDestination(
                 icon: Icon(Icons.home_outlined),
@@ -108,14 +147,29 @@ class _HomePageState extends State<HomePage> {
       },
     );
   }
+
+  Widget _buildPage(int index) {
+    return switch (index) {
+      1 => const LineupPage(),
+      2 => const Placeholder(), // Jogadores
+      3 => ScorePage(currentUser: widget.user),
+      _ => const _HomeBody(),
+    };
+  }
 }
 
 // ─── Home body extraído para widget separado ─────────────────────────────────
 
 class _HomeBody extends StatelessWidget {
-  const _HomeBody({this.userName});
+  const _HomeBody({
+    this.userName,
+    this.lineupSummary,
+    this.onBuildTeam,
+  });
 
   final String? userName;
+  final LineupHomeSummary? lineupSummary;
+  final VoidCallback? onBuildTeam;
 
   @override
   Widget build(BuildContext context) {
@@ -145,13 +199,21 @@ class _HomeBody extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: _MyTeamSection()),
+                    Expanded(
+                      child: _MyTeamSection(
+                        lineupSummary: lineupSummary,
+                        onBuildTeam: onBuildTeam,
+                      ),
+                    ),
                     const SizedBox(width: 16),
                     Expanded(child: _RoundSection()),
                   ],
                 )
               else ...[
-                _MyTeamSection(),
+                _MyTeamSection(
+                  lineupSummary: lineupSummary,
+                  onBuildTeam: onBuildTeam,
+                ),
                 const SizedBox(height: 16),
                 _RoundSection(),
               ],
@@ -243,21 +305,32 @@ class _ScoreCard extends StatelessWidget {
 }
 
 class _MyTeamSection extends StatelessWidget {
+  const _MyTeamSection({this.lineupSummary, this.onBuildTeam});
+
+  final LineupHomeSummary? lineupSummary;
+  final VoidCallback? onBuildTeam;
+
   @override
   Widget build(BuildContext context) {
-    return const Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SectionTitle(title: 'Meu Time'),
-        SizedBox(height: 10),
-        _MyTeamCard(),
+        const _SectionTitle(title: 'Meu Time'),
+        const SizedBox(height: 10),
+        _MyTeamCard(
+          lineupSummary: lineupSummary,
+          onBuildTeam: onBuildTeam,
+        ),
       ],
     );
   }
 }
 
 class _MyTeamCard extends StatelessWidget {
-  const _MyTeamCard();
+  const _MyTeamCard({this.lineupSummary, this.onBuildTeam});
+
+  final LineupHomeSummary? lineupSummary;
+  final VoidCallback? onBuildTeam;
 
   @override
   Widget build(BuildContext context) {
@@ -265,6 +338,9 @@ class _MyTeamCard extends StatelessWidget {
     final cardBg = Theme.of(context).brightness == Brightness.dark
         ? cs.surfaceContainerHighest
         : const Color(0xFFEEEEEE);
+    final mountedSummary = lineupSummary?.isMounted == true
+        ? lineupSummary
+        : null;
 
     return Container(
       decoration: BoxDecoration(
@@ -282,7 +358,9 @@ class _MyTeamCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Você ainda não montou seu time',
+                  mountedSummary?.teamName ?? 'Você ainda não montou seu time',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
@@ -291,7 +369,12 @@ class _MyTeamCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Escolha 11 jogadores para começar',
+                  mountedSummary == null
+                      ? 'Escolha 11 jogadores para começar'
+                      : '${mountedSummary.selectedCount}/11 escalados • ${mountedSummary.formation}'
+                          '${mountedSummary.captainName == null ? '' : ' • Cap: ${mountedSummary.captainName}'}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                 ),
               ],
@@ -304,8 +387,11 @@ class _MyTeamCard extends StatelessWidget {
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            onPressed: () {},
-            child: const Text('Montar', style: TextStyle(fontSize: 13)),
+            onPressed: onBuildTeam,
+            child: Text(
+              mountedSummary == null ? 'Montar' : 'Editar',
+              style: const TextStyle(fontSize: 13),
+            ),
           ),
         ],
       ),

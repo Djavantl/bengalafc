@@ -1,25 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../core/services/ranking_service.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/theme_notifier.dart';
+import '../../ranking/models/ranking_user_score.dart';
+import '../../settings/models/app_user_model.dart';
+import '../../settings/views/widgets/user_avatar.dart';
 import '../models/user_phase_score.dart';
 import '../viewmodels/scoring_notifier.dart';
 
 class ScorePage extends StatefulWidget {
-  const ScorePage({super.key});
+  const ScorePage({
+    super.key,
+    required this.currentUser,
+  });
+
+  final AppUserModel currentUser;
 
   @override
   State<ScorePage> createState() => _ScorePageState();
 }
 
 class _ScorePageState extends State<ScorePage> {
-  static const _demoUserId = 'demo_user_001';
+  final _rankingService = RankingService();
+  late Future<List<RankingUserScore>> _rankingFuture;
 
   @override
   void initState() {
     super.initState();
+    _rankingFuture = _rankingService.getGlobalRanking(
+      currentUser: widget.currentUser,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<ScoringNotifier>().load(_demoUserId);
+      context.read<ScoringNotifier>().load(widget.currentUser.id);
     });
   }
 
@@ -37,20 +49,44 @@ class _ScorePageState extends State<ScorePage> {
       case ScoringStatus.error:
         return _ErrorState(
           message: notifier.errorMessage ?? 'Erro desconhecido.',
-          onRetry: () => notifier.load('demo_user_001'),
+          onRetry: _reload,
         );
       case ScoringStatus.success:
         if (notifier.scores.isEmpty) return const _EmptyState();
-        return _ScoreContent(notifier: notifier);
+        return _ScoreContent(
+          notifier: notifier,
+          rankingFuture: _rankingFuture,
+          onRetryRanking: _reloadRanking,
+        );
       case ScoringStatus.idle:
         return const SizedBox.shrink();
     }
+  }
+
+  void _reload() {
+    context.read<ScoringNotifier>().load(widget.currentUser.id);
+    _reloadRanking();
+  }
+
+  void _reloadRanking() {
+    setState(() {
+      _rankingFuture = _rankingService.getGlobalRanking(
+        currentUser: widget.currentUser,
+      );
+    });
   }
 }
 
 class _ScoreContent extends StatelessWidget {
   final ScoringNotifier notifier;
-  const _ScoreContent({required this.notifier});
+  final Future<List<RankingUserScore>> rankingFuture;
+  final VoidCallback onRetryRanking;
+
+  const _ScoreContent({
+    required this.notifier,
+    required this.rankingFuture,
+    required this.onRetryRanking,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -67,6 +103,17 @@ class _ScoreContent extends StatelessWidget {
             children: [
               _SummaryCard(notifier: notifier),
               const SizedBox(height: 24),
+              _SectionTitle(
+                title: 'Ranking geral',
+                trailing: IconButton(
+                  tooltip: 'Atualizar ranking',
+                  onPressed: onRetryRanking,
+                  icon: const Icon(Icons.refresh),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _RankingList(rankingFuture: rankingFuture),
+              const SizedBox(height: 24),
               Text(
                 'Histórico por fase',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -80,6 +127,233 @@ class _ScoreContent extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({
+    required this.title,
+    this.trailing,
+  });
+
+  final String title;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 40,
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ),
+          if (trailing != null) trailing!,
+        ],
+      ),
+    );
+  }
+}
+
+class _RankingList extends StatelessWidget {
+  const _RankingList({required this.rankingFuture});
+
+  final Future<List<RankingUserScore>> rankingFuture;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<RankingUserScore>>(
+      future: rankingFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Column(
+            children: [
+              for (int i = 0; i < 4; i++) ...[
+                _SkeletonBox(height: 72, radius: 16),
+                const SizedBox(height: 10),
+              ],
+            ],
+          );
+        }
+
+        if (snapshot.hasError) {
+          return const _RankingError();
+        }
+
+        final ranking = snapshot.data ?? [];
+        if (ranking.isEmpty) {
+          return const _RankingEmpty();
+        }
+
+        return Column(
+          children: [
+            for (final entry in ranking) _RankingRow(entry: entry),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _RankingRow extends StatelessWidget {
+  const _RankingRow({required this.entry});
+
+  final RankingUserScore entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isCurrentUser = entry.isCurrentUser;
+    final backgroundColor = isCurrentUser
+        ? cs.primaryContainer.withOpacity(isDark ? 0.5 : 0.8)
+        : isDark
+            ? cs.surfaceContainerHighest
+            : const Color(0xFFEEEEE8);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isCurrentUser ? cs.primary : Colors.transparent,
+          width: isCurrentUser ? 1.5 : 0,
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 32,
+            child: Text(
+              '#${entry.position}',
+              style: TextStyle(
+                color: isCurrentUser ? cs.primary : cs.onSurfaceVariant,
+                fontWeight: FontWeight.w900,
+                fontSize: 15,
+              ),
+            ),
+          ),
+          UserAvatar(user: entry.user, radius: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        entry.user.name,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    if (isCurrentUser) ...[
+                      const SizedBox(width: 8),
+                      _CurrentUserPill(colorScheme: cs),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  entry.user.email ?? 'Sem e-mail',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '${entry.totalPoints.toStringAsFixed(1)} pts',
+            style: TextStyle(
+              color: isCurrentUser ? cs.primary : cs.onSurface,
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CurrentUserPill extends StatelessWidget {
+  const _CurrentUserPill({required this.colorScheme});
+
+  final ColorScheme colorScheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: colorScheme.primary,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: const Text(
+        'Voce',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _RankingError extends StatelessWidget {
+  const _RankingError();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.errorContainer,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        'Nao foi possivel carregar o ranking.',
+        style: TextStyle(color: cs.onErrorContainer),
+      ),
+    );
+  }
+}
+
+class _RankingEmpty extends StatelessWidget {
+  const _RankingEmpty();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        'Nenhum usuario encontrado para o ranking.',
+        style: TextStyle(color: cs.onSurfaceVariant),
+      ),
     );
   }
 }
