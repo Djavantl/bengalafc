@@ -8,7 +8,7 @@ class ApiClient {
   ApiClient._privateConstructor();
   static final ApiClient instance = ApiClient._privateConstructor();
 
-  static const bool useProduction = true; // Mude para false para testar localmente
+  static const bool useProduction = false; // Mude para false para testar localmente
 
   String get baseUrl {
     if (useProduction) {
