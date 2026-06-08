@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
+import '../../../core/services/api_client.dart';
 import '../data/lineup_local_storage.dart';
 import '../models/lineup_player_model.dart';
 
@@ -47,6 +49,11 @@ class LineupViewModel extends ChangeNotifier {
   String? captainPlayerId;
   bool isSaved = false;
 
+  bool isLoading = false;
+  String? errorMessage;
+  int? activeStageId;
+  int? lineupId;
+
   late List<LineupSlot> _slots;
   late List<LineupPlayerModel> _availablePlayers;
 
@@ -54,6 +61,7 @@ class LineupViewModel extends ChangeNotifier {
       : _storage = storage ?? LineupLocalStorage() {
     _loadMockLineup();
     _loadSavedLineup();
+    loadData();
   }
 
   List<LineupSlot> get slots => List.unmodifiable(_slots);
@@ -86,9 +94,173 @@ class LineupViewModel extends ChangeNotifier {
     return null;
   }
 
+  String _mapBackendPosition(String? backendPos) {
+    if (backendPos == null) return 'ZAG';
+    final pos = backendPos.toLowerCase();
+    if (pos.contains('goalkeeper') || pos == 'goleiro') {
+      return 'GOL';
+    } else if (pos.contains('midfielder') || pos == 'meia') {
+      return 'MEI';
+    } else if (pos.contains('attacker') || pos.contains('forward') || pos == 'atacante') {
+      return 'ATA';
+    } else {
+      return 'ZAG';
+    }
+  }
+
+  bool _isPositionCompatible(String playerPos, String slotPos) {
+    if (playerPos == slotPos) return true;
+    if ((playerPos == 'ZAG' || playerPos == 'LD' || playerPos == 'LE') &&
+        (slotPos == 'ZAG' || slotPos == 'LD' || slotPos == 'LE')) {
+      return true;
+    }
+    return false;
+  }
+
+  String _deduceFormation(List<LineupPlayerModel> players) {
+    int defenders = 0;
+    int midfielders = 0;
+    int attackers = 0;
+    for (final p in players) {
+      final pos = p.position;
+      if (pos == 'ZAG' || pos == 'LD' || pos == 'LE') {
+        defenders++;
+      } else if (pos == 'MEI') {
+        midfielders++;
+      } else if (pos == 'ATA') {
+        attackers++;
+      }
+    }
+    final candidate = '$defenders-$midfielders-$attackers';
+    if (formationOptions.contains(candidate)) {
+      return candidate;
+    }
+    return '4-3-3';
+  }
+
+  Future<void> loadData() async {
+    if (!ApiClient.instance.isAuthenticated) {
+      debugPrint('User is not authenticated. Skipping API load.');
+      return;
+    }
+
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
+
+    try {
+      await loadAvailablePlayers();
+      await loadLineup();
+    } catch (e) {
+      errorMessage = e.toString();
+      debugPrint('Error loading API data: $e');
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadAvailablePlayers() async {
+    try {
+      final response = await ApiClient.instance.get('/api/players/');
+      final List<dynamic> playersJson = jsonDecode(response.body);
+
+      _availablePlayers = playersJson.map((data) {
+        final id = data['id']?.toString() ?? '';
+        final name = data['name']?.toString() ?? '';
+        final nationalTeam = (data['team_detail']?['code'] ?? data['team_detail']?['name'] ?? data['nationality'] ?? 'BRA').toString().toUpperCase();
+        final position = _mapBackendPosition(data['position']?.toString());
+        const averagePoints = 0.0;
+        const selectedPercentage = 0.0;
+
+        return LineupPlayerModel(
+          id: id,
+          name: name,
+          nationalTeam: nationalTeam,
+          position: position,
+          averagePoints: averagePoints,
+          selectedPercentage: selectedPercentage,
+          isStarter: false,
+        );
+      }).toList();
+    } catch (e) {
+      debugPrint('Error loading available players: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> loadLineup() async {
+    try {
+      final stagesResponse = await ApiClient.instance.get('/api/stages/');
+      final List<dynamic> stagesJson = jsonDecode(stagesResponse.body);
+      
+      int stageId = 3;
+      if (stagesJson.isNotEmpty) {
+        stageId = stagesJson[0]['id'] as int;
+      }
+      activeStageId = stageId;
+
+      try {
+        final lineupResponse = await ApiClient.instance.get('/api/lineups/by-stage/$activeStageId/');
+        final Map<String, dynamic> lineupJson = jsonDecode(lineupResponse.body);
+        
+        lineupId = lineupJson['id'] as int?;
+        final List<dynamic> players = lineupJson['players'] ?? [];
+        final captainIdVal = lineupJson['captain']?.toString();
+
+        final List<LineupPlayerModel> loadedPlayers = [];
+        for (final p in players) {
+          final detail = p['player_detail'];
+          if (detail != null) {
+            final id = detail['id']?.toString() ?? '';
+            final name = detail['name']?.toString() ?? '';
+            final nationalTeam = (detail['team_detail']?['code'] ?? detail['team_detail']?['name'] ?? detail['nationality'] ?? 'BRA').toString().toUpperCase();
+            final position = _mapBackendPosition(detail['position']?.toString());
+
+            loadedPlayers.add(
+              LineupPlayerModel(
+                id: id,
+                name: name,
+                nationalTeam: nationalTeam,
+                position: position,
+                averagePoints: 0.0,
+                selectedPercentage: 0.0,
+                isStarter: true,
+              )
+            );
+          }
+        }
+
+        if (loadedPlayers.isNotEmpty) {
+          selectedFormation = _deduceFormation(loadedPlayers);
+          _slots = _buildSlotsForFormation(selectedFormation);
+
+          for (final player in loadedPlayers) {
+            final slotIndex = _slots.indexWhere((slot) => slot.player == null && _isPositionCompatible(player.position, slot.position));
+            if (slotIndex != -1) {
+              _slots[slotIndex] = _slots[slotIndex].copyWith(player: player);
+            }
+          }
+
+          captainPlayerId = captainIdVal;
+          isSaved = isComplete;
+        }
+      } on ApiException catch (e) {
+        if (e.statusCode == 404) {
+          lineupId = null;
+        } else {
+          rethrow;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading lineup: $e');
+      rethrow;
+    }
+  }
+
   List<LineupPlayerModel> optionsForSlot(LineupSlot slot) {
     return _availablePlayers
-        .where((player) => player.position == slot.position)
+        .where((player) => _isPositionCompatible(player.position, slot.position))
         .where(
           (player) =>
               player.id == slot.player?.id ||
@@ -103,7 +275,7 @@ class LineupViewModel extends ChangeNotifier {
     if (index == -1) return;
 
     final slot = _slots[index];
-    if (slot.position != player.position) return;
+    if (!_isPositionCompatible(player.position, slot.position)) return;
 
     final repeatedPlayerIndex = _slots.indexWhere(
       (otherSlot) => otherSlot.id != slotId && otherSlot.player?.id == player.id,
@@ -155,20 +327,60 @@ class LineupViewModel extends ChangeNotifier {
   }
 
   Future<void> saveLineup() async {
-    await _storage.saveLineup(
-      teamName: teamName,
-      formation: selectedFormation,
-      selectedCount: selectedCount,
-      captainName: captainName,
-      captainPlayerId: captainPlayerId,
-      selectedPlayerIdsBySlot: {
-        for (final slot in _slots)
-          if (slot.player != null) slot.id: slot.player!.id,
-      },
-    );
-
-    isSaved = true;
+    isLoading = true;
+    errorMessage = null;
     notifyListeners();
+
+    try {
+      final playerIds = selectedPlayers.map((p) => int.parse(p.id)).toList();
+      final captainIdVal = captainPlayerId != null ? int.parse(captainPlayerId!) : null;
+
+      if (activeStageId == null) {
+        final stagesResponse = await ApiClient.instance.get('/api/stages/');
+        final List<dynamic> stagesJson = jsonDecode(stagesResponse.body);
+        if (stagesJson.isNotEmpty) {
+          activeStageId = stagesJson[0]['id'] as int;
+        } else {
+          activeStageId = 3;
+        }
+      }
+
+      final body = {
+        'stage': activeStageId,
+        'captain_id': captainIdVal,
+        'player_ids': playerIds,
+      };
+
+      if (lineupId == null) {
+        final response = await ApiClient.instance.post('/api/lineups/', body);
+        final Map<String, dynamic> responseJson = jsonDecode(response.body);
+        lineupId = responseJson['id'] as int?;
+      } else {
+        await ApiClient.instance.patch('/api/lineups/$lineupId/', body);
+      }
+
+      // Also save to local storage as fallback
+      await _storage.saveLineup(
+        teamName: teamName,
+        formation: selectedFormation,
+        selectedCount: selectedCount,
+        captainName: captainName,
+        captainPlayerId: captainPlayerId,
+        selectedPlayerIdsBySlot: {
+          for (final slot in _slots)
+            if (slot.player != null) slot.id: slot.player!.id,
+        },
+      );
+
+      isSaved = true;
+    } catch (e) {
+      errorMessage = e.toString();
+      isSaved = false;
+      rethrow;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> _loadSavedLineup() async {
@@ -187,7 +399,7 @@ class LineupViewModel extends ChangeNotifier {
       if (playerId == null) continue;
 
       final player = _playerById(playerId);
-      if (player == null || player.position != slot.position) continue;
+      if (player == null || !_isPositionCompatible(player.position, slot.position)) continue;
 
       _slots[index] = slot.copyWith(player: player.copyWith(isStarter: true));
     }

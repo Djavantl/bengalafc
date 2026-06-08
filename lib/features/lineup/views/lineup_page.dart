@@ -24,6 +24,15 @@ class _LineupView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<LineupViewModel>(
       builder: (context, viewModel, _) {
+        if (viewModel.isLoading && viewModel.availablePlayers.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(32.0),
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
         return LayoutBuilder(
           builder: (context, constraints) {
             final isWide = constraints.maxWidth >= 760;
@@ -119,15 +128,43 @@ class _LineupHeader extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               FilledButton.icon(
-                onPressed: viewModel.isComplete
-                    ? () {
-                        viewModel.saveLineup();
+                onPressed: (viewModel.isComplete && !viewModel.isLoading)
+                    ? () async {
+                        try {
+                          await viewModel.saveLineup();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Escalação salva com sucesso!'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Erro ao salvar escalação: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
                       }
                     : null,
-                icon: Icon(
-                  viewModel.isSaved ? Icons.check_circle : Icons.save_outlined,
-                  size: 18,
-                ),
+                icon: viewModel.isLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Icon(
+                        viewModel.isSaved ? Icons.check_circle : Icons.save_outlined,
+                        size: 18,
+                      ),
                 label: Text(viewModel.isSaved ? 'Salvo' : 'Salvar'),
               ),
             ],
