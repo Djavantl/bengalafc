@@ -8,7 +8,20 @@ class ApiClient {
   ApiClient._privateConstructor();
   static final ApiClient instance = ApiClient._privateConstructor();
 
-  final String baseUrl = 'https://bengalafc-api-production.up.railway.app';
+  static const bool useProduction = true; // Mude para false para testar localmente
+
+  String get baseUrl {
+    if (useProduction) {
+      return 'https://bengalafc-api-production.up.railway.app';
+    }
+    if (kIsWeb) {
+      return 'http://localhost:8000';
+    } else if (Platform.isAndroid) {
+      return 'http://10.0.2.2:8000';
+    } else {
+      return 'http://127.0.0.1:8000';
+    }
+  }
 
   String? _token;
 
