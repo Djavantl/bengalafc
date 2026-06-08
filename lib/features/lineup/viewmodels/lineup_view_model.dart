@@ -172,6 +172,7 @@ class LineupViewModel extends ChangeNotifier {
         final position = _mapBackendPosition(data['position']?.toString());
         const averagePoints = 0.0;
         const selectedPercentage = 0.0;
+        final photoUrl = data['photo']?.toString();
 
         return LineupPlayerModel(
           id: id,
@@ -181,6 +182,7 @@ class LineupViewModel extends ChangeNotifier {
           averagePoints: averagePoints,
           selectedPercentage: selectedPercentage,
           isStarter: false,
+          photoUrl: photoUrl,
         );
       }).toList();
     } catch (e) {
@@ -216,6 +218,7 @@ class LineupViewModel extends ChangeNotifier {
             final name = detail['name']?.toString() ?? '';
             final nationalTeam = (detail['team_detail']?['code'] ?? detail['team_detail']?['name'] ?? detail['nationality'] ?? 'BRA').toString().toUpperCase();
             final position = _mapBackendPosition(detail['position']?.toString());
+            final photoUrl = detail['photo']?.toString();
 
             loadedPlayers.add(
               LineupPlayerModel(
@@ -226,6 +229,7 @@ class LineupViewModel extends ChangeNotifier {
                 averagePoints: 0.0,
                 selectedPercentage: 0.0,
                 isStarter: true,
+                photoUrl: photoUrl,
               )
             );
           }

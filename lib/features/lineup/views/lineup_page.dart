@@ -688,14 +688,22 @@ class _PlayerSlotButton extends StatelessWidget {
                       shape: BoxShape.circle,
                       color: Colors.white,
                       border: Border.all(color: AppColors.accent, width: 2),
+                      image: (player != null && player.photoUrl != null && player.photoUrl!.isNotEmpty)
+                          ? DecorationImage(
+                              image: NetworkImage(player.photoUrl!),
+                              fit: BoxFit.cover,
+                            )
+                          : null,
                     ),
-                    child: Icon(
-                      player == null
-                          ? Icons.add
-                          : Icons.sports_soccer_outlined,
-                      color: AppColors.primaryLight,
-                      size: 20,
-                    ),
+                    child: (player != null && player.photoUrl != null && player.photoUrl!.isNotEmpty)
+                        ? null
+                        : Icon(
+                            player == null
+                                ? Icons.add
+                                : Icons.sports_soccer_outlined,
+                            color: AppColors.primaryLight,
+                            size: 20,
+                          ),
                   ),
                   if (isCaptain)
                     Positioned(
@@ -875,17 +883,22 @@ class _PlayerAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasPhoto = player.photoUrl != null && player.photoUrl!.isNotEmpty;
+
     return CircleAvatar(
       radius: 18,
       backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.12),
-      child: Text(
-        player.position,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w900,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-      ),
+      backgroundImage: hasPhoto ? NetworkImage(player.photoUrl!) : null,
+      child: hasPhoto
+          ? null
+          : Text(
+              player.position,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
     );
   }
 }
