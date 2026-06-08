@@ -196,11 +196,15 @@ class LineupViewModel extends ChangeNotifier {
       final stagesResponse = await ApiClient.instance.get('/api/stages/');
       final List<dynamic> stagesJson = jsonDecode(stagesResponse.body);
       
-      int stageId = 3;
-      if (stagesJson.isNotEmpty) {
-        stageId = stagesJson[0]['id'] as int;
+      if (stagesJson.isEmpty) {
+        errorMessage = 'Nenhuma rodada/fase cadastrada no servidor.';
+        notifyListeners();
+        return;
       }
+      
+      final stageId = stagesJson[0]['id'] as int;
       activeStageId = stageId;
+      roundName = stagesJson[0]['name']?.toString() ?? roundName;
 
       try {
         final lineupResponse = await ApiClient.instance.get('/api/lineups/by-stage/$activeStageId/');
@@ -345,7 +349,7 @@ class LineupViewModel extends ChangeNotifier {
         if (stagesJson.isNotEmpty) {
           activeStageId = stagesJson[0]['id'] as int;
         } else {
-          activeStageId = 3;
+          throw Exception('Nenhuma rodada/fase cadastrada no servidor para salvar a escalação.');
         }
       }
 
