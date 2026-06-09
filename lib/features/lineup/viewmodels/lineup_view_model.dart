@@ -59,7 +59,8 @@ class LineupViewModel extends ChangeNotifier {
 
   LineupViewModel({LineupLocalStorage? storage})
       : _storage = storage ?? LineupLocalStorage() {
-    _loadMockLineup();
+    _slots = _buildSlotsForFormation(selectedFormation);
+    _availablePlayers = [];
     _loadSavedLineup();
     loadData();
   }
@@ -95,24 +96,41 @@ class LineupViewModel extends ChangeNotifier {
   }
 
   String _mapBackendPosition(String? backendPos) {
-    if (backendPos == null) return 'ZAG';
-    final pos = backendPos.toLowerCase();
-    if (pos.contains('goalkeeper') || pos == 'goleiro') {
-      return 'GOL';
-    } else if (pos.contains('midfielder') || pos == 'meia') {
-      return 'MEI';
-    } else if (pos.contains('attacker') || pos.contains('forward') || pos == 'atacante') {
-      return 'ATA';
-    } else {
-      return 'ZAG';
+    if (backendPos == null || backendPos.isEmpty) return 'ZAG';
+    
+    final parts = backendPos.split(',');
+    final mapped = <String>{};
+    
+    for (final part in parts) {
+      final pos = part.trim().toLowerCase();
+      if (pos == 'gk' || pos.contains('goalkeeper') || pos == 'goleiro' || pos == 'gol') {
+        mapped.add('GOL');
+      } else if (pos == 'mf' || pos.contains('midfielder') || pos == 'meia' || pos == 'mei') {
+        mapped.add('MEI');
+      } else if (pos == 'fw' || pos.contains('attacker') || pos.contains('forward') || pos == 'atacante' || pos == 'ata') {
+        mapped.add('ATA');
+      } else if (pos == 'ld') {
+        mapped.add('LD');
+      } else if (pos == 'le') {
+        mapped.add('LE');
+      } else if (pos == 'df' || pos.contains('defender') || pos == 'zagueiro' || pos == 'lateral' || pos == 'zag') {
+        mapped.add('ZAG');
+      } else {
+        mapped.add('ZAG');
+      }
     }
+    
+    return mapped.join(',');
   }
 
   bool _isPositionCompatible(String playerPos, String slotPos) {
-    if (playerPos == slotPos) return true;
-    if ((playerPos == 'ZAG' || playerPos == 'LD' || playerPos == 'LE') &&
-        (slotPos == 'ZAG' || slotPos == 'LD' || slotPos == 'LE')) {
-      return true;
+    final playerPositions = playerPos.split(',');
+    for (final pPos in playerPositions) {
+      if (pPos == slotPos) return true;
+      if ((pPos == 'ZAG' || pPos == 'LD' || pPos == 'LE') &&
+          (slotPos == 'ZAG' || slotPos == 'LD' || slotPos == 'LE')) {
+        return true;
+      }
     }
     return false;
   }
@@ -123,11 +141,12 @@ class LineupViewModel extends ChangeNotifier {
     int attackers = 0;
     for (final p in players) {
       final pos = p.position;
-      if (pos == 'ZAG' || pos == 'LD' || pos == 'LE') {
+      final parts = pos.split(',');
+      if (parts.any((x) => x == 'ZAG' || x == 'LD' || x == 'LE')) {
         defenders++;
-      } else if (pos == 'MEI') {
+      } else if (parts.any((x) => x == 'MEI')) {
         midfielders++;
-      } else if (pos == 'ATA') {
+      } else if (parts.any((x) => x == 'ATA')) {
         attackers++;
       }
     }
@@ -138,34 +157,44 @@ class LineupViewModel extends ChangeNotifier {
     return '4-3-3';
   }
 
-  Future<void> loadData() async {
-    if (!ApiClient.instance.isAuthenticated) {
-      debugPrint('User is not authenticated. Skipping API load.');
-      return;
-    }
+  final Set<String> _loadedPositions = {};
+  final Set<String> _loadingPositions = {};
 
-    isLoading = true;
-    errorMessage = null;
-    notifyListeners();
+  bool isPositionLoading(String slotPos) => _loadingPositions.contains(slotPos);
 
-    try {
-      await loadAvailablePlayers();
-      await loadLineup();
-    } catch (e) {
-      errorMessage = e.toString();
-      debugPrint('Error loading API data: $e');
-    } finally {
-      isLoading = false;
-      notifyListeners();
+  String _mapSlotPosToApiPos(String slotPos) {
+    switch (slotPos) {
+      case 'GOL':
+        return 'GK';
+      case 'ZAG':
+      case 'LD':
+      case 'LE':
+        return 'DF';
+      case 'MEI':
+        return 'MF';
+      case 'ATA':
+        return 'FW';
+      default:
+        return 'DF';
     }
   }
 
-  Future<void> loadAvailablePlayers() async {
+  Future<void> loadPlayersForPosition(String slotPos) async {
+    if (_loadedPositions.contains(slotPos) || _loadingPositions.contains(slotPos)) {
+      return;
+    }
+
+    _loadingPositions.add(slotPos);
+    notifyListeners();
+
     try {
-      final response = await ApiClient.instance.get('/api/players/');
+      final apiPos = _mapSlotPosToApiPos(slotPos);
+      final urlPath = '/api/players/?position=$apiPos';
+      final response = await ApiClient.instance.get(urlPath);
+      
       final List<dynamic> playersJson = jsonDecode(response.body);
 
-      _availablePlayers = playersJson.map((data) {
+      final List<LineupPlayerModel> loadedList = playersJson.map<LineupPlayerModel>((data) {
         final id = data['id']?.toString() ?? '';
         final name = data['name']?.toString() ?? '';
         final nationalTeam = (data['team_detail']?['code'] ?? data['team_detail']?['name'] ?? data['nationality'] ?? 'BRA').toString().toUpperCase();
@@ -185,9 +214,42 @@ class LineupViewModel extends ChangeNotifier {
           photoUrl: photoUrl,
         );
       }).toList();
+
+      final existingIds = _availablePlayers.map((p) => p.id).toSet();
+      for (final p in loadedList) {
+        if (!existingIds.contains(p.id)) {
+          _availablePlayers.add(p);
+        }
+      }
+
+      _loadedPositions.add(slotPos);
+    } catch (e, stack) {
+      debugPrint('Error loading players for position $slotPos: $e');
+      debugPrint(stack.toString());
+    } finally {
+      _loadingPositions.remove(slotPos);
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadData() async {
+    if (!ApiClient.instance.isAuthenticated) {
+      debugPrint('User is not authenticated. Skipping API load.');
+      return;
+    }
+
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
+
+    try {
+      await loadLineup();
     } catch (e) {
-      debugPrint('Error loading available players: $e');
-      rethrow;
+      errorMessage = e.toString();
+      debugPrint('Error loading API data: $e');
+    } finally {
+      isLoading = false;
+      notifyListeners();
     }
   }
 
@@ -267,15 +329,18 @@ class LineupViewModel extends ChangeNotifier {
   }
 
   List<LineupPlayerModel> optionsForSlot(LineupSlot slot) {
-    return _availablePlayers
+    final filteredByPos = _availablePlayers
         .where((player) => _isPositionCompatible(player.position, slot.position))
-        .where(
+        .toList();
+    
+    final finalOptions = filteredByPos.where(
           (player) =>
               player.id == slot.player?.id ||
               !_slots.any((selectedSlot) => selectedSlot.player?.id == player.id),
         )
         .toList(growable: false)
       ..sort((a, b) => b.averagePoints.compareTo(a.averagePoints));
+    return finalOptions;
   }
 
   void selectPlayer(String slotId, LineupPlayerModel player) {
@@ -430,185 +495,7 @@ class LineupViewModel extends ChangeNotifier {
     return null;
   }
 
-  void _loadMockLineup() {
-    _slots = _buildSlotsForFormation(selectedFormation);
 
-    _availablePlayers = const [
-      LineupPlayerModel(
-        id: 'emi-martinez',
-        name: 'E. Martinez',
-        nationalTeam: 'ARG',
-        position: 'GOL',
-        averagePoints: 6.8,
-        selectedPercentage: 31,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'alisson',
-        name: 'Alisson',
-        nationalTeam: 'BRA',
-        position: 'GOL',
-        averagePoints: 6.4,
-        selectedPercentage: 24,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'hakimi',
-        name: 'Hakimi',
-        nationalTeam: 'MAR',
-        position: 'LD',
-        averagePoints: 5.9,
-        selectedPercentage: 21,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'cancelo',
-        name: 'Cancelo',
-        nationalTeam: 'POR',
-        position: 'LD',
-        averagePoints: 5.3,
-        selectedPercentage: 16,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'van-dijk',
-        name: 'Van Dijk',
-        nationalTeam: 'HOL',
-        position: 'ZAG',
-        averagePoints: 5.7,
-        selectedPercentage: 18,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'marquinhos',
-        name: 'Marquinhos',
-        nationalTeam: 'BRA',
-        position: 'ZAG',
-        averagePoints: 5.4,
-        selectedPercentage: 26,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'theo',
-        name: 'Theo Hernandez',
-        nationalTeam: 'FRA',
-        position: 'LE',
-        averagePoints: 5.5,
-        selectedPercentage: 19,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'nuno-mendes',
-        name: 'Nuno Mendes',
-        nationalTeam: 'POR',
-        position: 'LE',
-        averagePoints: 5.2,
-        selectedPercentage: 15,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'gvardiol',
-        name: 'Gvardiol',
-        nationalTeam: 'CRO',
-        position: 'ZAG',
-        averagePoints: 5.1,
-        selectedPercentage: 14,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'bellingham',
-        name: 'Bellingham',
-        nationalTeam: 'ING',
-        position: 'MEI',
-        averagePoints: 7.2,
-        selectedPercentage: 39,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'de-bruyne',
-        name: 'De Bruyne',
-        nationalTeam: 'BEL',
-        position: 'MEI',
-        averagePoints: 6.9,
-        selectedPercentage: 28,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'valverde',
-        name: 'Valverde',
-        nationalTeam: 'URU',
-        position: 'MEI',
-        averagePoints: 5.8,
-        selectedPercentage: 17,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'musiala',
-        name: 'Musiala',
-        nationalTeam: 'ALE',
-        position: 'MEI',
-        averagePoints: 6.5,
-        selectedPercentage: 22,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'rodri',
-        name: 'Rodri',
-        nationalTeam: 'ESP',
-        position: 'MEI',
-        averagePoints: 5.6,
-        selectedPercentage: 16,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'mbappe',
-        name: 'Mbappe',
-        nationalTeam: 'FRA',
-        position: 'ATA',
-        averagePoints: 8.1,
-        selectedPercentage: 52,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'vinicius',
-        name: 'Vini Jr',
-        nationalTeam: 'BRA',
-        position: 'ATA',
-        averagePoints: 7.8,
-        selectedPercentage: 48,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'haaland',
-        name: 'Haaland',
-        nationalTeam: 'NOR',
-        position: 'ATA',
-        averagePoints: 7.4,
-        selectedPercentage: 34,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'lautaro',
-        name: 'Lautaro',
-        nationalTeam: 'ARG',
-        position: 'ATA',
-        averagePoints: 6.2,
-        selectedPercentage: 23,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'son',
-        name: 'Son',
-        nationalTeam: 'COR',
-        position: 'ATA',
-        averagePoints: 6.1,
-        selectedPercentage: 20,
-        isStarter: false,
-      ),
-    ];
-
-    captainPlayerId = null;
-  }
 
   List<LineupSlot> _buildSlotsForFormation(
     String formation, {

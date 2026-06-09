@@ -24,15 +24,6 @@ class _LineupView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<LineupViewModel>(
       builder: (context, viewModel, _) {
-        if (viewModel.isLoading && viewModel.availablePlayers.isEmpty) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(32.0),
-              child: CircularProgressIndicator(),
-            ),
-          );
-        }
-
         return LayoutBuilder(
           builder: (context, constraints) {
             final isWide = constraints.maxWidth >= 760;
@@ -50,6 +41,10 @@ class _LineupView extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (viewModel.isLoading) ...[
+                      const LinearProgressIndicator(),
+                      const SizedBox(height: 12),
+                    ],
                     _LineupHeader(viewModel: viewModel),
                     const SizedBox(height: 16),
                     if (isWide)
@@ -309,26 +304,36 @@ class _PitchCard extends StatelessWidget {
     LineupViewModel viewModel,
     LineupSlot slot,
   ) {
+    viewModel.loadPlayersForPosition(slot.position);
+
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
       builder: (sheetContext) {
-        final options = viewModel.optionsForSlot(slot);
+        return ChangeNotifierProvider.value(
+          value: viewModel,
+          child: Consumer<LineupViewModel>(
+            builder: (context, vm, _) {
+              final options = vm.optionsForSlot(slot);
 
-        return _PlayerPickerSheet(
-          slot: slot,
-          options: options,
-          onSelect: (player) {
-            viewModel.selectPlayer(slot.id, player);
-            Navigator.of(sheetContext).pop();
-          },
-          onRemove: slot.player == null
-              ? null
-              : () {
-                  viewModel.clearSlot(slot.id);
+              return _PlayerPickerSheet(
+                slot: slot,
+                options: options,
+                isLoading: vm.isPositionLoading(slot.position),
+                onSelect: (player) {
+                  vm.selectPlayer(slot.id, player);
                   Navigator.of(sheetContext).pop();
                 },
+                onRemove: slot.player == null
+                    ? null
+                    : () {
+                        vm.clearSlot(slot.id);
+                        Navigator.of(sheetContext).pop();
+                      },
+              );
+            },
+          ),
         );
       },
     );
@@ -341,12 +346,14 @@ class _PlayerPickerSheet extends StatefulWidget {
     required this.options,
     required this.onSelect,
     this.onRemove,
+    this.isLoading = false,
   });
 
   final LineupSlot slot;
   final List<LineupPlayerModel> options;
   final ValueChanged<LineupPlayerModel> onSelect;
   final VoidCallback? onRemove;
+  final bool isLoading;
 
   @override
   State<_PlayerPickerSheet> createState() => _PlayerPickerSheetState();
@@ -449,9 +456,16 @@ class _PlayerPickerSheetState extends State<_PlayerPickerSheet> {
               constraints: BoxConstraints(
                 maxHeight: MediaQuery.sizeOf(context).height * 0.54,
               ),
-              child: filteredOptions.isEmpty
-                  ? _PlayerPickerEmptyState(colorScheme: cs)
-                  : ListView.separated(
+              child: widget.isLoading && filteredOptions.isEmpty
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24.0),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                  : filteredOptions.isEmpty
+                      ? _PlayerPickerEmptyState(colorScheme: cs)
+                      : ListView.separated(
                       shrinkWrap: true,
                       itemCount: filteredOptions.length,
                       separatorBuilder: (_, __) => const Divider(height: 1),
