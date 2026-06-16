@@ -122,48 +122,120 @@ class _LineupHeader extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              FilledButton.icon(
-                onPressed: (viewModel.isComplete && !viewModel.isLoading)
-                    ? () async {
-                        try {
-                          await viewModel.saveLineup();
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Escalação salva com sucesso!'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.end,
+                children: [
+                  if (viewModel.selectedCount > 0 || viewModel.lineupId != null)
+                    OutlinedButton.icon(
+                      onPressed: viewModel.isLoading
+                          ? null
+                          : () async {
+                              final shouldClear = await showDialog<bool>(
+                                context: context,
+                                builder: (dialogContext) => AlertDialog(
+                                  title: const Text('Limpar escalação?'),
+                                  content: const Text(
+                                    'Isso remove todos os jogadores escalados para a rodada atual.',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.of(dialogContext).pop(false),
+                                      child: const Text('Cancelar'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () =>
+                                          Navigator.of(dialogContext).pop(true),
+                                      child: const Text('Limpar'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (shouldClear != true) return;
+
+                              try {
+                                await viewModel.clearLineup();
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Escalação limpa.'),
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content:
+                                          Text('Erro ao limpar escalação: $e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                      icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+                      label: const Text('Limpar'),
+                    ),
+                  FilledButton.icon(
+                    onPressed: (viewModel.isComplete && !viewModel.isLoading)
+                        ? () async {
+                            try {
+                              await viewModel.saveLineup();
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content:
+                                        Text('Escalação salva com sucesso!'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Erro ao salvar escalação: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
                           }
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Erro ao salvar escalação: $e'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        }
-                      }
-                    : null,
-                icon: viewModel.isLoading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Icon(
-                        viewModel.isSaved ? Icons.check_circle : Icons.save_outlined,
-                        size: 18,
-                      ),
-                label: Text(viewModel.isSaved ? 'Salvo' : 'Salvar'),
+                        : null,
+                    icon: viewModel.isLoading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Icon(
+                            viewModel.isSaved
+                                ? Icons.check_circle
+                                : Icons.save_outlined,
+                            size: 18,
+                          ),
+                    label: Text(viewModel.isSaved ? 'Salvo' : 'Salvar'),
+                  ),
+                ],
               ),
             ],
           ),
+          if (viewModel.errorMessage != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              viewModel.errorMessage!,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: cs.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ],
           const SizedBox(height: 14),
           Wrap(
             spacing: 8,
@@ -304,6 +376,15 @@ class _PitchCard extends StatelessWidget {
     LineupViewModel viewModel,
     LineupSlot slot,
   ) {
+    if (viewModel.activeStageId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nenhuma rodada atual cadastrada para escalar.'),
+        ),
+      );
+      return;
+    }
+
     viewModel.loadPlayersForPosition(slot.position);
 
     showModalBottomSheet<void>(

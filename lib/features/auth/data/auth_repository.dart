@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../../../core/services/api_client.dart';
 import '../../settings/models/app_user_model.dart';
 
@@ -26,29 +27,34 @@ class AuthRepository {
     return _currentUser;
   }
 
-  String getAuthorizationUrl(String challenge) {
-    final baseUrl = ApiClient.instance.baseUrl;
-    final redirectUri = '$baseUrl/callback';
-    return '$baseUrl/o/authorize/?response_type=code&client_id=bengalafc-mobile&redirect_uri=${Uri.encodeComponent(redirectUri)}&code_challenge=$challenge&code_challenge_method=S256';
+  String get _clientId => dotenv.env['OAUTH_CLIENT_ID']?.trim() ?? '';
+
+  String get _clientSecret => dotenv.env['OAUTH_CLIENT_SECRET']?.trim() ?? '';
+
+  void _validateOAuthConfig() {
+    if (_clientId.isEmpty || _clientSecret.isEmpty) {
+      throw const AuthException(
+        'Configure OAUTH_CLIENT_ID e OAUTH_CLIENT_SECRET no .env do app.',
+      );
+    }
   }
 
-  Future<AppUserModel> signInWithCode({
-    required String code,
-    required String codeVerifier,
+  Future<AppUserModel> signInWithEmailAndPassword({
+    required String email,
+    required String password,
   }) async {
     try {
-      final redirectUri = '${ApiClient.instance.baseUrl}/callback';
-      final body = {
-        'grant_type': 'authorization_code',
-        'code': code,
-        'redirect_uri': redirectUri,
-        'client_id': 'bengalafc-mobile',
-        'code_verifier': codeVerifier,
-      };
+      _validateOAuthConfig();
 
       final response = await ApiClient.instance.post(
         '/o/token/',
-        body,
+        {
+          'grant_type': 'password',
+          'username': email.trim(),
+          'password': password,
+          'client_id': _clientId,
+          'client_secret': _clientSecret,
+        },
         requireAuth: false,
         isJson: false,
       );
@@ -64,8 +70,42 @@ class AuthRepository {
       return user;
     } on ApiException catch (e) {
       throw AuthException(e.message);
+    } on AuthException {
+      rethrow;
     } catch (e) {
-      throw const AuthException('Erro ao autenticar com o código do servidor.');
+      throw const AuthException('Erro ao autenticar com email e senha.');
+    }
+  }
+
+  Future<AppUserModel> signUpWithEmailAndPassword({
+    required String email,
+    required String password,
+    required String firstName,
+    required String lastName,
+  }) async {
+    try {
+      await ApiClient.instance.post(
+        '/api/users/',
+        {
+          'username': email.trim(),
+          'email': email.trim(),
+          'password': password,
+          'first_name': firstName.trim(),
+          'last_name': lastName.trim(),
+        },
+        requireAuth: false,
+      );
+
+      return signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+    } on ApiException catch (e) {
+      throw AuthException(e.message);
+    } on AuthException {
+      rethrow;
+    } catch (e) {
+      throw const AuthException('Erro ao criar conta.');
     }
   }
 
@@ -118,7 +158,8 @@ class AuthRepository {
     final firstName = data['first_name'] as String? ?? '';
     final lastName = data['last_name'] as String? ?? '';
     final name = '$firstName $lastName'.trim();
-    final displayName = name.isNotEmpty ? name : (data['username'] as String? ?? 'Usuário');
+    final displayName =
+        name.isNotEmpty ? name : (data['username'] as String? ?? 'Usuário');
     final avatar = data['photo'] as String?;
     
     String? fullAvatarUrl;

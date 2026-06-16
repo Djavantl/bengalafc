@@ -52,7 +52,6 @@ class _ScorePageState extends State<ScorePage> {
           onRetry: _reload,
         );
       case ScoringStatus.success:
-        if (notifier.scores.isEmpty) return const _EmptyState();
         return _ScoreContent(
           notifier: notifier,
           rankingFuture: _rankingFuture,
@@ -101,8 +100,6 @@ class _ScoreContent extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _SummaryCard(notifier: notifier),
-              const SizedBox(height: 24),
               _SectionTitle(
                 title: 'Ranking geral',
                 trailing: IconButton(
@@ -114,14 +111,14 @@ class _ScoreContent extends StatelessWidget {
               const SizedBox(height: 12),
               _RankingList(rankingFuture: rankingFuture),
               const SizedBox(height: 24),
-              Text(
-                'Histórico por fase',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+              _SectionTitle(
+                title: 'Histórico por fase',
               ),
               const SizedBox(height: 12),
-              ...notifier.scores.map((s) => _PhaseCard(score: s)),
+              if (notifier.scores.isEmpty)
+                const _EmptyState()
+              else
+                ...notifier.scores.map((s) => _PhaseCard(score: s)),
               const SizedBox(height: 32),
             ],
           ),
@@ -268,7 +265,7 @@ class _RankingRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  entry.user.email ?? 'Sem e-mail',
+                  entry.user.email ?? 'Pontuação geral',
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
@@ -358,85 +355,6 @@ class _RankingEmpty extends StatelessWidget {
   }
 }
 
-class _SummaryCard extends StatelessWidget {
-  final ScoringNotifier notifier;
-  const _SummaryCard({required this.notifier});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [cs.primary, cs.primaryContainer],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Total acumulado',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.white.withOpacity(0.8),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${notifier.totalPoints.toStringAsFixed(1)} pts',
-                  style: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                    height: 1,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(width: 1, height: 48, color: Colors.white24),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(left: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Melhor ranking',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white.withOpacity(0.8),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '#${notifier.bestRank}',
-                    style: const TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      height: 1,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _PhaseCard extends StatelessWidget {
   final UserPhaseScore score;
   const _PhaseCard({required this.score});
@@ -482,7 +400,7 @@ class _PhaseCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Fase ${score.phaseNumber}',
+                  score.phaseName,
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
@@ -491,7 +409,9 @@ class _PhaseCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Ranking: #${score.rankPosition}',
+                  score.rankPosition > 0
+                      ? 'Ranking: #${score.rankPosition}'
+                      : 'Ranking por fase indisponível',
                   style: TextStyle(
                     fontSize: 12,
                     color: cs.onSurfaceVariant,
@@ -525,8 +445,6 @@ class _LoadingState extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _SkeletonBox(height: 100, radius: 16),
-          const SizedBox(height: 24),
           _SkeletonBox(height: 18, radius: 6, width: 140),
           const SizedBox(height: 12),
           for (int i = 0; i < 4; i++) ...[

@@ -52,60 +52,98 @@ class ApiClient {
   Future<http.Response> get(String path, {bool requireAuth = true}) async {
     final url = Uri.parse('$baseUrl$path');
     final response = await http.get(url, headers: _headers(requireAuth));
-    return _handleResponse(response);
+    return _handleResponse(response, requireAuth: requireAuth);
   }
 
-  Future<http.Response> post(String path, dynamic body, {bool requireAuth = true, bool isJson = true}) async {
+  Future<http.Response> post(
+    String path,
+    dynamic body, {
+    bool requireAuth = true,
+    bool isJson = true,
+  }) async {
     final url = Uri.parse('$baseUrl$path');
     final headers = _headers(requireAuth);
-    final serializedBody = isJson ? jsonEncode(body) : body;
+    Object? serializedBody = isJson ? jsonEncode(body) : body;
     if (!isJson) {
       headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      if (body is Map) {
+        serializedBody = body.map(
+          (key, value) => MapEntry(key.toString(), value.toString()),
+        );
+      }
     }
-    final response = await http.post(url, headers: headers, body: serializedBody);
-    return _handleResponse(response);
+    final response = await http.post(
+      url,
+      headers: headers,
+      body: serializedBody,
+    );
+    return _handleResponse(response, requireAuth: requireAuth);
   }
 
-  Future<http.Response> patch(String path, dynamic body, {bool requireAuth = true}) async {
+  Future<http.Response> patch(
+    String path,
+    dynamic body, {
+    bool requireAuth = true,
+  }) async {
     final url = Uri.parse('$baseUrl$path');
-    final response = await http.patch(url, headers: _headers(requireAuth), body: jsonEncode(body));
-    return _handleResponse(response);
+    final response = await http.patch(
+      url,
+      headers: _headers(requireAuth),
+      body: jsonEncode(body),
+    );
+    return _handleResponse(response, requireAuth: requireAuth);
   }
 
   Future<http.Response> delete(String path, {bool requireAuth = true}) async {
     final url = Uri.parse('$baseUrl$path');
     final response = await http.delete(url, headers: _headers(requireAuth));
-    return _handleResponse(response);
+    return _handleResponse(response, requireAuth: requireAuth);
   }
 
-  http.Response _handleResponse(http.Response response) {
+  http.Response _handleResponse(
+    http.Response response, {
+    required bool requireAuth,
+  }) {
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return response;
-    } else if (response.statusCode == 401) {
-      clearToken();
-      throw ApiException('Sessão expirada. Faça login novamente.', response.statusCode);
-    } else {
-      String errorMessage = 'Erro na comunicação com o servidor.';
-      try {
-        final decoded = jsonDecode(response.body);
-        if (decoded is Map) {
-          if (decoded.containsKey('detail')) {
-            errorMessage = decoded['detail'].toString();
-          } else if (decoded.containsKey('error_description')) {
-            errorMessage = decoded['error_description'].toString();
-          } else if (decoded.containsKey('error')) {
-            errorMessage = decoded['error'].toString();
-          } else {
-            final buffer = StringBuffer();
-            decoded.forEach((key, value) {
-              buffer.write('$key: $value\n');
-            });
-            errorMessage = buffer.toString().trim();
-          }
-        }
-      } catch (_) {}
-      throw ApiException(errorMessage, response.statusCode);
     }
+
+    final errorMessage = _extractErrorMessage(response);
+
+    if (response.statusCode == 401 && requireAuth) {
+      clearToken();
+      throw ApiException(
+        errorMessage == 'Erro na comunicação com o servidor.'
+            ? 'Sessão expirada. Faça login novamente.'
+            : errorMessage,
+        response.statusCode,
+      );
+    }
+
+    throw ApiException(errorMessage, response.statusCode);
+  }
+
+  String _extractErrorMessage(http.Response response) {
+    var errorMessage = 'Erro na comunicação com o servidor.';
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map) {
+        if (decoded.containsKey('detail')) {
+          errorMessage = decoded['detail'].toString();
+        } else if (decoded.containsKey('error_description')) {
+          errorMessage = decoded['error_description'].toString();
+        } else if (decoded.containsKey('error')) {
+          errorMessage = decoded['error'].toString();
+        } else {
+          final buffer = StringBuffer();
+          decoded.forEach((key, value) {
+            buffer.write('$key: $value\n');
+          });
+          errorMessage = buffer.toString().trim();
+        }
+      }
+    } catch (_) {}
+    return errorMessage;
   }
 }
 

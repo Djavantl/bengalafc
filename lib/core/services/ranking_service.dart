@@ -8,58 +8,51 @@ class RankingService {
     required AppUserModel currentUser,
   }) async {
     try {
-      final response = await ApiClient.instance.get('/api/users/profiles/');
-      final List<dynamic> profilesJson = jsonDecode(response.body);
+      final response = await ApiClient.instance.get('/api/ranking/global/');
+      final List<dynamic> rankingJson = jsonDecode(response.body);
 
-      final List<RankingUserScore> entries = [];
-      for (final data in profilesJson) {
-        final id = data['id']?.toString() ?? '';
-        final email = data['email'] as String?;
-        final firstName = data['first_name'] as String? ?? '';
-        final lastName = data['last_name'] as String? ?? '';
-        final name = '$firstName $lastName'.trim();
-        final displayName = name.isNotEmpty ? name : (data['username'] as String? ?? 'Usuário');
-        final avatar = data['photo'] as String?;
-        final points = (data['points'] as num?)?.toDouble() ?? 0.0;
-
-        String? fullAvatarUrl;
-        if (avatar != null) {
-          if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
-            fullAvatarUrl = avatar;
-          } else {
-            fullAvatarUrl = '${ApiClient.instance.baseUrl}$avatar';
-          }
-        }
-
-        final user = AppUserModel(
-          id: id,
-          name: displayName,
-          email: email,
-          avatarUrl: fullAvatarUrl,
-          createdAt: DateTime.now(),
-          updatedAt: DateTime.now(),
-        );
-
-        entries.add(
-          RankingUserScore(
-            user: user,
-            totalPoints: points,
-            position: 0,
-            isCurrentUser: id == currentUser.id,
-          ),
-        );
-      }
-
-      // Sort descending by total points
-      entries.sort((a, b) => b.totalPoints.compareTo(a.totalPoints));
-
-      // Inject ranking positions
       return [
-        for (var i = 0; i < entries.length; i++)
-          entries[i].copyWith(position: i + 1),
+        for (final data in rankingJson)
+          _parseRankingEntry(data, currentUser),
       ];
     } catch (e) {
       throw Exception('Falha ao carregar ranking do servidor: $e');
     }
+  }
+
+  RankingUserScore _parseRankingEntry(
+    dynamic data,
+    AppUserModel currentUser,
+  ) {
+    if (data is Map) {
+      final id = data['id']?.toString() ?? '';
+      final username = data['username']?.toString() ?? 'Usuário';
+      final points = (data['points'] as num?)?.toDouble() ?? 0.0;
+      final position = (data['position'] as num?)?.toInt() ?? 0;
+
+      return RankingUserScore(
+        user: AppUserModel(
+          id: id,
+          name: username,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        ),
+        totalPoints: points,
+        position: position,
+        isCurrentUser: id == currentUser.id,
+      );
+    }
+
+    return RankingUserScore(
+      user: AppUserModel(
+        id: '',
+        name: 'Usuário',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      ),
+      totalPoints: 0,
+      position: 0,
+      isCurrentUser: false,
+    );
   }
 }

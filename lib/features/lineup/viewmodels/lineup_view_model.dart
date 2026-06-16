@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/services/api_client.dart';
-import '../data/lineup_local_storage.dart';
 import '../models/lineup_player_model.dart';
 
 class LineupSlot {
@@ -40,8 +39,6 @@ class LineupSlot {
 class LineupViewModel extends ChangeNotifier {
   static const formationOptions = ['4-3-3', '4-4-2', '3-5-2'];
 
-  final LineupLocalStorage _storage;
-
   String teamName = 'Bengala Stars';
   String selectedFormation = '4-3-3';
   String roundName = 'Rodada 1 - Fase de grupos';
@@ -57,11 +54,9 @@ class LineupViewModel extends ChangeNotifier {
   late List<LineupSlot> _slots;
   late List<LineupPlayerModel> _availablePlayers;
 
-  LineupViewModel({LineupLocalStorage? storage})
-      : _storage = storage ?? LineupLocalStorage() {
+  LineupViewModel() {
     _slots = _buildSlotsForFormation(selectedFormation);
     _availablePlayers = [];
-    _loadSavedLineup();
     loadData();
   }
 
@@ -180,6 +175,12 @@ class LineupViewModel extends ChangeNotifier {
   }
 
   Future<void> loadPlayersForPosition(String slotPos) async {
+    if (activeStageId == null) {
+      errorMessage = 'Nenhuma rodada atual cadastrada no servidor.';
+      notifyListeners();
+      return;
+    }
+
     if (_loadedPositions.contains(slotPos) || _loadingPositions.contains(slotPos)) {
       return;
     }
@@ -189,7 +190,7 @@ class LineupViewModel extends ChangeNotifier {
 
     try {
       final apiPos = _mapSlotPosToApiPos(slotPos);
-      final urlPath = '/api/players/?position=$apiPos';
+      final urlPath = '/api/players/?position=$apiPos&stage=$activeStageId';
       final response = await ApiClient.instance.get(urlPath);
       
       final List<dynamic> playersJson = jsonDecode(response.body);
@@ -260,13 +261,31 @@ class LineupViewModel extends ChangeNotifier {
       
       if (stagesJson.isEmpty) {
         errorMessage = 'Nenhuma rodada/fase cadastrada no servidor.';
+        _clearLocalLineupState();
         notifyListeners();
         return;
       }
       
-      final stageId = stagesJson[0]['id'] as int;
+      final currentStage = stagesJson.cast<dynamic>().firstWhere(
+            (stage) => stage is Map && stage['is_current'] == true,
+            orElse: () => null,
+          );
+      if (currentStage is! Map) {
+        activeStageId = null;
+        errorMessage = 'Nenhuma rodada atual cadastrada no servidor.';
+        _clearLocalLineupState();
+        notifyListeners();
+        return;
+      }
+
+      final stageId = currentStage['id'] as int;
+      if (activeStageId != null && activeStageId != stageId) {
+        _availablePlayers.clear();
+        _loadedPositions.clear();
+        _loadingPositions.clear();
+      }
       activeStageId = stageId;
-      roundName = stagesJson[0]['name']?.toString() ?? roundName;
+      roundName = currentStage['name']?.toString() ?? roundName;
 
       try {
         final lineupResponse = await ApiClient.instance.get('/api/lineups/by-stage/$activeStageId/');
@@ -314,10 +333,12 @@ class LineupViewModel extends ChangeNotifier {
 
           captainPlayerId = captainIdVal;
           isSaved = isComplete;
+        } else {
+          _clearLocalLineupState(keepStage: true);
         }
       } on ApiException catch (e) {
         if (e.statusCode == 404) {
-          lineupId = null;
+          _clearLocalLineupState(keepStage: true);
         } else {
           rethrow;
         }
@@ -411,10 +432,14 @@ class LineupViewModel extends ChangeNotifier {
       if (activeStageId == null) {
         final stagesResponse = await ApiClient.instance.get('/api/stages/');
         final List<dynamic> stagesJson = jsonDecode(stagesResponse.body);
-        if (stagesJson.isNotEmpty) {
-          activeStageId = stagesJson[0]['id'] as int;
+        final currentStage = stagesJson.cast<dynamic>().firstWhere(
+              (stage) => stage is Map && stage['is_current'] == true,
+              orElse: () => null,
+            );
+        if (currentStage is Map) {
+          activeStageId = currentStage['id'] as int;
         } else {
-          throw Exception('Nenhuma rodada/fase cadastrada no servidor para salvar a escalação.');
+          throw Exception('Nenhuma rodada atual cadastrada no servidor para salvar a escalação.');
         }
       }
 
@@ -432,19 +457,6 @@ class LineupViewModel extends ChangeNotifier {
         await ApiClient.instance.patch('/api/lineups/$lineupId/', body);
       }
 
-      // Also save to local storage as fallback
-      await _storage.saveLineup(
-        teamName: teamName,
-        formation: selectedFormation,
-        selectedCount: selectedCount,
-        captainName: captainName,
-        captainPlayerId: captainPlayerId,
-        selectedPlayerIdsBySlot: {
-          for (final slot in _slots)
-            if (slot.player != null) slot.id: slot.player!.id,
-        },
-      );
-
       isSaved = true;
     } catch (e) {
       errorMessage = e.toString();
@@ -456,43 +468,38 @@ class LineupViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> _loadSavedLineup() async {
-    final savedLineup = await _storage.loadLineup();
-    if (!savedLineup.isMounted) return;
-
-    teamName = savedLineup.teamName;
-    selectedFormation = formationOptions.contains(savedLineup.formation)
-        ? savedLineup.formation
-        : selectedFormation;
-    _slots = _buildSlotsForFormation(selectedFormation);
-
-    for (var index = 0; index < _slots.length; index++) {
-      final slot = _slots[index];
-      final playerId = savedLineup.selectedPlayerIdsBySlot[slot.id];
-      if (playerId == null) continue;
-
-      final player = _playerById(playerId);
-      if (player == null || !_isPositionCompatible(player.position, slot.position)) continue;
-
-      _slots[index] = slot.copyWith(player: player.copyWith(isStarter: true));
-    }
-
-    captainPlayerId = selectedPlayers.any(
-      (player) => player.id == savedLineup.captainPlayerId,
-    )
-        ? savedLineup.captainPlayerId
-        : selectedPlayers.isEmpty
-            ? null
-            : selectedPlayers.first.id;
-    isSaved = isComplete;
+  Future<void> clearLineup() async {
+    isLoading = true;
+    errorMessage = null;
     notifyListeners();
+
+    try {
+      if (lineupId != null) {
+        await ApiClient.instance.delete('/api/lineups/$lineupId/');
+      }
+      _clearLocalLineupState(keepStage: true);
+    } catch (e) {
+      errorMessage = e.toString();
+      rethrow;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
   }
 
-  LineupPlayerModel? _playerById(String id) {
-    for (final player in _availablePlayers) {
-      if (player.id == id) return player;
+  void _clearLocalLineupState({bool keepStage = false}) {
+    lineupId = null;
+    captainPlayerId = null;
+    selectedFormation = '4-3-3';
+    _slots = _buildSlotsForFormation(selectedFormation);
+    isSaved = false;
+    if (!keepStage) {
+      activeStageId = null;
+      roundName = 'Rodada 1 - Fase de grupos';
+      _availablePlayers.clear();
+      _loadedPositions.clear();
+      _loadingPositions.clear();
     }
-    return null;
   }
 
 

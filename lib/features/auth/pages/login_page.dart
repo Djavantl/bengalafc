@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../core/services/api_client.dart';
-import '../../../core/services/pkce_helper.dart';
 import '../data/auth_repository.dart';
-import 'web_auth_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -13,36 +10,44 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _authRepository = AuthRepository();
-  bool _isLoading = false;
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
 
-  Future<void> _loginWithPkce() async {
+  bool _isLoading = false;
+  bool _isSignUp = false;
+  bool _obscurePassword = true;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+
     setState(() => _isLoading = true);
 
     try {
-      final codeVerifier = PkceHelper.generateCodeVerifier();
-      final codeChallenge = PkceHelper.generateCodeChallenge(codeVerifier);
-      final authUrl = _authRepository.getAuthorizationUrl(codeChallenge);
-      final redirectUri = '${ApiClient.instance.baseUrl}/callback';
-
-      if (!mounted) return;
-      final code = await Navigator.of(context).push<String>(
-        MaterialPageRoute(
-          builder: (_) => WebAuthPage(
-            authUrl: authUrl,
-            redirectUri: redirectUri,
-          ),
-        ),
-      );
-
-      if (code == null) {
-        setState(() => _isLoading = false);
-        return;
+      if (_isSignUp) {
+        await _authRepository.signUpWithEmailAndPassword(
+          email: _emailController.text,
+          password: _passwordController.text,
+          firstName: _firstNameController.text,
+          lastName: _lastNameController.text,
+        );
+      } else {
+        await _authRepository.signInWithEmailAndPassword(
+          email: _emailController.text,
+          password: _passwordController.text,
+        );
       }
-
-      await _authRepository.signInWithCode(
-        code: code,
-        codeVerifier: codeVerifier,
-      );
 
       if (!mounted) return;
       if (Navigator.of(context).canPop()) {
@@ -55,19 +60,6 @@ class _LoginPageState extends State<LoginPage> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  void _openWebsiteRegister() {
-    final registerUrl = '${_authRepository.getAuthorizationUrl("dummy").split("/o/authorize/").first}/';
-    final redirectUri = '${ApiClient.instance.baseUrl}/callback';
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => WebAuthPage(
-          authUrl: registerUrl,
-          redirectUri: redirectUri,
-        ),
-      ),
-    );
   }
 
   void _showError(String message) {
@@ -104,7 +96,9 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'O Fantasy Game oficial do Bengala',
+                    _isSignUp
+                        ? 'Crie sua conta para escalar seu time'
+                        : 'Entre com sua conta Bengala FC',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 16,
@@ -120,49 +114,136 @@ class _LoginPageState extends State<LoginPage> {
                           CircularProgressIndicator(),
                           SizedBox(height: 16),
                           Text(
-                            'Autenticando com o servidor...',
+                            'Conectando com o servidor...',
                             style: TextStyle(fontWeight: FontWeight.w500),
                           ),
                         ],
                       ),
                     )
-                  else ...[
-                    FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      onPressed: _loginWithPkce,
-                      icon: const Icon(Icons.login),
-                      label: const Text(
-                        'Entrar com o Bengala FC',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
+                  else
+                    Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (_isSignUp) ...[
+                            TextFormField(
+                              controller: _firstNameController,
+                              textInputAction: TextInputAction.next,
+                              decoration: const InputDecoration(
+                                labelText: 'Nome',
+                                prefixIcon: Icon(Icons.person_outline),
+                              ),
+                              validator: (value) {
+                                if (!_isSignUp) return null;
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Informe seu nome.';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _lastNameController,
+                              textInputAction: TextInputAction.next,
+                              decoration: const InputDecoration(
+                                labelText: 'Sobrenome',
+                                prefixIcon: Icon(Icons.badge_outlined),
+                              ),
+                              validator: (value) {
+                                if (!_isSignUp) return null;
+                                if (value == null || value.trim().isEmpty) {
+                                  return 'Informe seu sobrenome.';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          TextFormField(
+                            controller: _emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            textInputAction: TextInputAction.next,
+                            autofillHints: const [AutofillHints.email],
+                            decoration: const InputDecoration(
+                              labelText: 'Email',
+                              prefixIcon: Icon(Icons.mail_outline),
+                            ),
+                            validator: (value) {
+                              final email = value?.trim() ?? '';
+                              if (email.isEmpty) return 'Informe seu email.';
+                              if (!email.contains('@')) return 'Email inválido.';
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _passwordController,
+                            obscureText: _obscurePassword,
+                            textInputAction: TextInputAction.done,
+                            autofillHints: const [AutofillHints.password],
+                            onFieldSubmitted: (_) => _submit(),
+                            decoration: InputDecoration(
+                              labelText: 'Senha',
+                              prefixIcon: const Icon(Icons.lock_outline),
+                              suffixIcon: IconButton(
+                                tooltip: _obscurePassword
+                                    ? 'Mostrar senha'
+                                    : 'Ocultar senha',
+                                onPressed: () {
+                                  setState(() {
+                                    _obscurePassword = !_obscurePassword;
+                                  });
+                                },
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined,
+                                ),
+                              ),
+                            ),
+                            validator: (value) {
+                              final password = value ?? '';
+                              if (password.isEmpty) return 'Informe sua senha.';
+                              if (_isSignUp && password.length < 6) {
+                                return 'A senha precisa ter pelo menos 6 caracteres.';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 20),
+                          FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            onPressed: _submit,
+                            icon: Icon(
+                              _isSignUp ? Icons.person_add_alt : Icons.login,
+                            ),
+                            label: Text(
+                              _isSignUp ? 'Criar conta' : 'Entrar',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: () {
+                              setState(() => _isSignUp = !_isSignUp);
+                            },
+                            child: Text(
+                              _isSignUp ? 'Já tenho uma conta' : 'Não tenho conta',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      onPressed: _openWebsiteRegister,
-                      icon: const Icon(Icons.open_in_browser),
-                      label: const Text(
-                        'Criar conta no site',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
                   const Spacer(),
                 ],
               ),

@@ -1,7 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import '../../core/services/api_client.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/theme_notifier.dart';
-import '../lineup/data/lineup_local_storage.dart';
 import '../lineup/views/lineup_page.dart';
 import '../scoring/views/score_page.dart';
 import '../settings/models/app_user_model.dart';
@@ -23,22 +25,93 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final _lineupStorage = LineupLocalStorage();
-
   int _selectedIndex = 0;
-  LineupHomeSummary? _lineupSummary;
+  late Future<_HomeApiSummary> _homeApiSummaryFuture;
 
   @override
   void initState() {
     super.initState();
-    _loadLineupSummary();
+    _homeApiSummaryFuture = _loadHomeApiSummary();
   }
 
-  Future<void> _loadLineupSummary() async {
-    final summary = await _lineupStorage.loadSummary();
-    if (!mounted) return;
+  Future<_HomeApiSummary> _loadHomeApiSummary() async {
+    int? rankingPosition;
+    double totalPoints = 0;
+    int? stageId;
+    String? stageName;
+    bool hasCurrentLineup = false;
+    int lineupSelectedCount = 0;
+    String? lineupCaptainName;
 
-    setState(() => _lineupSummary = summary);
+    final rankingResponse = await ApiClient.instance.get('/api/ranking/global/');
+    final List<dynamic> rankingJson = jsonDecode(rankingResponse.body);
+    for (final item in rankingJson) {
+      if (item is! Map) continue;
+      if (item['id']?.toString() == widget.user.id) {
+        rankingPosition = (item['position'] as num?)?.toInt();
+        break;
+      }
+    }
+
+    final stagesResponse = await ApiClient.instance.get('/api/stages/');
+    final List<dynamic> stagesJson = jsonDecode(stagesResponse.body);
+    if (stagesJson.isNotEmpty && stagesJson.first is Map) {
+      final currentStage = stagesJson.cast<dynamic>().firstWhere(
+            (stage) => stage is Map && stage['is_current'] == true,
+            orElse: () => null,
+          );
+      if (currentStage is Map) {
+        stageId = (currentStage['id'] as num?)?.toInt();
+        stageName = currentStage['name']?.toString();
+      }
+    }
+
+    if (stageId != null) {
+      try {
+        final lineupResponse = await ApiClient.instance.get(
+          '/api/lineups/by-stage/$stageId/',
+        );
+        final lineupJson = jsonDecode(lineupResponse.body);
+        if (lineupJson is Map) {
+          hasCurrentLineup = true;
+          final players = lineupJson['players'];
+          lineupSelectedCount = players is List ? players.length : 0;
+          final captainDetail = lineupJson['captain_detail'];
+          if (captainDetail is Map) {
+            lineupCaptainName = captainDetail['name']?.toString();
+          }
+          final lineupId = lineupJson['id'];
+          if (lineupId != null) {
+            final historyResponse = await ApiClient.instance.get(
+              '/api/lineups/$lineupId/score-history/',
+            );
+            final historyJson = jsonDecode(historyResponse.body);
+            if (historyJson is Map) {
+              totalPoints =
+                  (historyJson['total_points'] as num?)?.toDouble() ?? 0;
+            }
+          }
+        }
+      } on ApiException catch (error) {
+        if (error.statusCode != 404) rethrow;
+      }
+    }
+
+    return _HomeApiSummary(
+      roundPoints: totalPoints,
+      rankingPosition: rankingPosition,
+      stageName: stageName,
+      hasCurrentLineup: hasCurrentLineup,
+      lineupSelectedCount: lineupSelectedCount,
+      lineupCaptainName: lineupCaptainName,
+    );
+  }
+
+  Future<void> _reloadHomeData() async {
+    if (!mounted) return;
+    setState(() {
+      _homeApiSummaryFuture = _loadHomeApiSummary();
+    });
   }
 
   @override
@@ -111,15 +184,16 @@ class _HomePageState extends State<HomePage> {
           body: _selectedIndex == 0
               ? _HomeBody(
                   userName: widget.user.name,
-                  lineupSummary: _lineupSummary,
+                  homeApiSummaryFuture: _homeApiSummaryFuture,
                   onBuildTeam: () => setState(() => _selectedIndex = 1),
+                  onRefresh: _reloadHomeData,
                 )
               : _buildPage(_selectedIndex),
           bottomNavigationBar: NavigationBar(
             selectedIndex: _selectedIndex,
             onDestinationSelected: (index) {
               setState(() => _selectedIndex = index);
-              if (index == 0) _loadLineupSummary();
+              if (index == 0) _reloadHomeData();
             },
             destinations: const [
               NavigationDestination(
@@ -153,9 +227,32 @@ class _HomePageState extends State<HomePage> {
       1 => const LineupPage(),
       2 => const Placeholder(), // Jogadores
       3 => ScorePage(currentUser: widget.user),
-      _ => const _HomeBody(),
+      _ => _HomeBody(
+          userName: widget.user.name,
+          homeApiSummaryFuture: _homeApiSummaryFuture,
+          onBuildTeam: () => setState(() => _selectedIndex = 1),
+          onRefresh: _reloadHomeData,
+        ),
     };
   }
+}
+
+class _HomeApiSummary {
+  const _HomeApiSummary({
+    required this.roundPoints,
+    required this.rankingPosition,
+    required this.stageName,
+    required this.hasCurrentLineup,
+    required this.lineupSelectedCount,
+    required this.lineupCaptainName,
+  });
+
+  final double roundPoints;
+  final int? rankingPosition;
+  final String? stageName;
+  final bool hasCurrentLineup;
+  final int lineupSelectedCount;
+  final String? lineupCaptainName;
 }
 
 // ─── Home body extraído para widget separado ─────────────────────────────────
@@ -163,62 +260,74 @@ class _HomePageState extends State<HomePage> {
 class _HomeBody extends StatelessWidget {
   const _HomeBody({
     this.userName,
-    this.lineupSummary,
+    required this.homeApiSummaryFuture,
     this.onBuildTeam,
+    this.onRefresh,
   });
 
   final String? userName;
-  final LineupHomeSummary? lineupSummary;
+  final Future<_HomeApiSummary> homeApiSummaryFuture;
   final VoidCallback? onBuildTeam;
+  final Future<void> Function()? onRefresh;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > 600;
-        return SingleChildScrollView(
-          padding: EdgeInsets.symmetric(
-            horizontal: isWide ? 32 : 16,
-            vertical: 20,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (userName != null) ...[
-                Text(
-                  'Ola, $userName',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
+        return RefreshIndicator(
+          onRefresh: onRefresh ?? () async {},
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.symmetric(
+              horizontal: isWide ? 32 : 16,
+              vertical: 20,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (userName != null) ...[
+                  Text(
+                    'Ola, $userName',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                _ScoreCard(summaryFuture: homeApiSummaryFuture),
+                const SizedBox(height: 24),
+                if (isWide)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _MyTeamSection(
+                          summaryFuture: homeApiSummaryFuture,
+                          onBuildTeam: onBuildTeam,
+                        ),
                       ),
-                ),
-                const SizedBox(height: 12),
-              ],
-              const _ScoreCard(),
-              const SizedBox(height: 24),
-              if (isWide)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: _MyTeamSection(
-                        lineupSummary: lineupSummary,
-                        onBuildTeam: onBuildTeam,
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _RoundSection(
+                          summaryFuture: homeApiSummaryFuture,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(child: _RoundSection()),
-                  ],
-                )
-              else ...[
-                _MyTeamSection(
-                  lineupSummary: lineupSummary,
-                  onBuildTeam: onBuildTeam,
-                ),
-                const SizedBox(height: 16),
-                _RoundSection(),
+                    ],
+                  )
+                else ...[
+                  _MyTeamSection(
+                    summaryFuture: homeApiSummaryFuture,
+                    onBuildTeam: onBuildTeam,
+                  ),
+                  const SizedBox(height: 16),
+                  _RoundSection(
+                    summaryFuture: homeApiSummaryFuture,
+                  ),
+                ],
+                const SizedBox(height: 32),
               ],
-              const SizedBox(height: 32),
-            ],
+            ),
           ),
         );
       },
@@ -227,87 +336,110 @@ class _HomeBody extends StatelessWidget {
 }
 
 class _ScoreCard extends StatelessWidget {
-  const _ScoreCard();
+  const _ScoreCard({required this.summaryFuture});
+
+  final Future<_HomeApiSummary> summaryFuture;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [cs.primary, cs.primaryContainer],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Pontuação da rodada',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.white.withOpacity(0.8),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  '— pts',
-                  style: TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                    height: 1,
-                  ),
-                ),
-              ],
+    return FutureBuilder<_HomeApiSummary>(
+      future: summaryFuture,
+      builder: (context, snapshot) {
+        final summary = snapshot.data;
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
+        final hasError = snapshot.hasError;
+        final pointsText = isLoading
+            ? '...'
+            : hasError
+                ? '--'
+                : '${(summary?.roundPoints ?? 0).toStringAsFixed(1)} pts';
+        final rankingText = isLoading
+            ? '#...'
+            : hasError
+                ? '#--'
+                : summary?.rankingPosition == null
+                    ? '#--'
+                    : '#${summary!.rankingPosition}';
+
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [cs.primary, cs.primaryContainer],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
+            borderRadius: BorderRadius.circular(16),
           ),
-          Container(width: 1, height: 48, color: Colors.white24),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(left: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Ranking',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white.withOpacity(0.8),
-                      fontWeight: FontWeight.w500,
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Pontuação da rodada',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withOpacity(0.8),
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    '#—',
-                    style: TextStyle(
-                      fontSize: 36,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      height: 1,
+                    const SizedBox(height: 4),
+                    Text(
+                      pointsText,
+                      style: const TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        height: 1,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+              Container(width: 1, height: 48, color: Colors.white24),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Ranking',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withOpacity(0.8),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        rankingText,
+                        style: const TextStyle(
+                          fontSize: 36,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          height: 1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
 
 class _MyTeamSection extends StatelessWidget {
-  const _MyTeamSection({this.lineupSummary, this.onBuildTeam});
+  const _MyTeamSection({required this.summaryFuture, this.onBuildTeam});
 
-  final LineupHomeSummary? lineupSummary;
+  final Future<_HomeApiSummary> summaryFuture;
   final VoidCallback? onBuildTeam;
 
   @override
@@ -318,7 +450,7 @@ class _MyTeamSection extends StatelessWidget {
         const _SectionTitle(title: 'Meu Time'),
         const SizedBox(height: 10),
         _MyTeamCard(
-          lineupSummary: lineupSummary,
+          summaryFuture: summaryFuture,
           onBuildTeam: onBuildTeam,
         ),
       ],
@@ -327,9 +459,9 @@ class _MyTeamSection extends StatelessWidget {
 }
 
 class _MyTeamCard extends StatelessWidget {
-  const _MyTeamCard({this.lineupSummary, this.onBuildTeam});
+  const _MyTeamCard({required this.summaryFuture, this.onBuildTeam});
 
-  final LineupHomeSummary? lineupSummary;
+  final Future<_HomeApiSummary> summaryFuture;
   final VoidCallback? onBuildTeam;
 
   @override
@@ -338,83 +470,118 @@ class _MyTeamCard extends StatelessWidget {
     final cardBg = Theme.of(context).brightness == Brightness.dark
         ? cs.surfaceContainerHighest
         : const Color(0xFFEEEEEE);
-    final mountedSummary = lineupSummary?.isMounted == true
-        ? lineupSummary
-        : null;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border(left: BorderSide(color: cs.primary, width: 4)),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      child: Row(
-        children: [
-          Icon(Icons.group_outlined, size: 36, color: cs.primary),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  mountedSummary?.teamName ?? 'Você ainda não montou seu time',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: cs.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  mountedSummary == null
-                      ? 'Escolha 11 jogadores para começar'
-                      : '${mountedSummary.selectedCount}/11 escalados • ${mountedSummary.formation}'
-                          '${mountedSummary.captainName == null ? '' : ' • Cap: ${mountedSummary.captainName}'}',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                ),
-              ],
-            ),
+    return FutureBuilder<_HomeApiSummary>(
+      future: summaryFuture,
+      builder: (context, snapshot) {
+        final summary = snapshot.data;
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
+        final hasError = snapshot.hasError;
+        final hasStage = summary?.stageName != null;
+        final hasLineup = summary?.hasCurrentLineup == true;
+
+        final title = isLoading
+            ? 'Carregando seu time...'
+            : hasError
+                ? 'Não foi possível carregar seu time'
+                : !hasStage
+                    ? 'Nenhuma rodada atual cadastrada'
+                    : hasLineup
+                        ? 'Escalação da ${summary!.stageName}'
+                        : 'Você não tem escalação para ${summary!.stageName}';
+        final subtitle = isLoading
+            ? 'Buscando escalação na API'
+            : hasError
+                ? 'Puxe para atualizar e tente novamente'
+                : !hasStage
+                    ? 'Quando uma fase atual existir, ela aparecerá aqui'
+                    : hasLineup
+                        ? '${summary!.lineupSelectedCount}/11 escalados'
+                            '${summary.lineupCaptainName == null ? '' : ' • Cap: ${summary.lineupCaptainName}'}'
+                        : 'Monte seu time para pontuar nesta rodada';
+
+        return Container(
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border(left: BorderSide(color: cs.primary, width: 4)),
           ),
-          const SizedBox(width: 12),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            onPressed: onBuildTeam,
-            child: Text(
-              mountedSummary == null ? 'Montar' : 'Editar',
-              style: const TextStyle(fontSize: 13),
-            ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+          child: Row(
+            children: [
+              Icon(Icons.group_outlined, size: 36, color: cs.primary),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                onPressed: hasError || !hasStage ? null : onBuildTeam,
+                child: Text(
+                  hasLineup ? 'Editar' : 'Montar',
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
 
 class _RoundSection extends StatelessWidget {
+  const _RoundSection({required this.summaryFuture});
+
+  final Future<_HomeApiSummary> summaryFuture;
+
   @override
   Widget build(BuildContext context) {
-    return const Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SectionTitle(title: 'Rodada Atual'),
-        SizedBox(height: 10),
-        _RoundCard(),
+        const _SectionTitle(title: 'Rodada Atual'),
+        const SizedBox(height: 10),
+        _RoundCard(summaryFuture: summaryFuture),
       ],
     );
   }
 }
 
 class _RoundCard extends StatelessWidget {
-  const _RoundCard();
+  const _RoundCard({required this.summaryFuture});
+
+  final Future<_HomeApiSummary> summaryFuture;
 
   @override
   Widget build(BuildContext context) {
@@ -423,39 +590,63 @@ class _RoundCard extends StatelessWidget {
         ? cs.surfaceContainerHighest
         : const Color(0xFFEEEEEE);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border(left: BorderSide(color: cs.secondary, width: 4)),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      child: Row(
-        children: [
-          Icon(Icons.sports_soccer_outlined, size: 36, color: cs.secondary),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Nenhuma rodada em andamento',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: cs.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Os jogos da fase aparecerão aqui',
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                ),
-              ],
-            ),
+    return FutureBuilder<_HomeApiSummary>(
+      future: summaryFuture,
+      builder: (context, snapshot) {
+        final summary = snapshot.data;
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
+        final hasError = snapshot.hasError;
+        final title = isLoading
+            ? 'Carregando rodada...'
+            : hasError
+                ? 'Não foi possível carregar'
+                : summary?.stageName ?? 'Nenhuma rodada cadastrada';
+        final subtitle = isLoading
+            ? 'Buscando informações da API'
+            : hasError
+                ? 'Puxe para atualizar e tente novamente'
+                : summary?.stageName == null
+                    ? 'As fases aparecerão aqui quando forem cadastradas'
+                    : 'Fase disponível para escalação e pontuação';
+
+        return Container(
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border(left: BorderSide(color: cs.secondary, width: 4)),
           ),
-        ],
-      ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+          child: Row(
+            children: [
+              Icon(Icons.sports_soccer_outlined, size: 36, color: cs.secondary),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
