@@ -1,8 +1,8 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/data/auth_repository.dart';
 import '../models/app_user_model.dart';
@@ -22,11 +22,11 @@ class _ProfilePageState extends State<ProfilePage> {
   final _authRepository = AuthRepository();
   final _picker = ImagePicker();
 
-  String? _localAvatarBase64;
-  String? _tempSelectedBase64;
   Uint8List? _tempSelectedBytes;
+  String? _tempSelectedName;
   bool _isLoading = false;
   bool _hasCustomAvatar = false;
+  bool _removeAvatar = false;
 
   @override
   void initState() {
@@ -45,9 +45,9 @@ class _ProfilePageState extends State<ProfilePage> {
     final local = await AvatarService.getLocalAvatar(widget.user.id);
     if (mounted) {
       setState(() {
-        _localAvatarBase64 = local;
         _hasCustomAvatar = (local != null && local.isNotEmpty) ||
-            (widget.user.avatarUrl != null && widget.user.avatarUrl!.isNotEmpty);
+            (widget.user.avatarUrl != null &&
+                widget.user.avatarUrl!.isNotEmpty);
       });
     }
   }
@@ -64,18 +64,19 @@ class _ProfilePageState extends State<ProfilePage> {
       if (image == null) return;
 
       final bytes = await image.readAsBytes();
-      final base64String = base64Encode(bytes);
 
       setState(() {
         _tempSelectedBytes = bytes;
-        _tempSelectedBase64 = base64String;
+        _tempSelectedName = image.name;
         _hasCustomAvatar = true;
+        _removeAvatar = false;
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Foto carregada com sucesso! Clique em salvar para aplicar.'),
+            content: Text(
+                'Foto carregada com sucesso! Clique em salvar para aplicar.'),
             backgroundColor: AppColors.win,
             duration: Duration(seconds: 2),
           ),
@@ -145,7 +146,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     color: cs.secondary.withOpacity(0.12),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.photo_library_outlined, color: cs.secondary),
+                  child:
+                      Icon(Icons.photo_library_outlined, color: cs.secondary),
                 ),
                 title: const Text('Escolher da galeria'),
                 subtitle: const Text('Selecione uma imagem salva'),
@@ -170,8 +172,9 @@ class _ProfilePageState extends State<ProfilePage> {
                     Navigator.pop(context);
                     setState(() {
                       _tempSelectedBytes = null;
-                      _tempSelectedBase64 = ''; // Empty string indicates removal
+                      _tempSelectedName = null;
                       _hasCustomAvatar = false;
+                      _removeAvatar = true;
                     });
                   },
                 ),
@@ -191,27 +194,21 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       await _authRepository.updateProfile(
         name: _nameController.text.trim(),
+        avatarBytes: _removeAvatar ? null : _tempSelectedBytes,
+        avatarFilename: _removeAvatar ? null : _tempSelectedName,
+        clearAvatar: _removeAvatar,
       );
 
-      if (_tempSelectedBase64 != null) {
-        if (_tempSelectedBase64!.isEmpty) {
-          await AvatarService.clearLocalAvatar(widget.user.id);
-        } else {
-          await AvatarService.saveLocalAvatar(
-            widget.user.id,
-            _tempSelectedBase64!,
-          );
-        }
+      if (_tempSelectedBytes != null || _removeAvatar) {
+        await AvatarService.clearLocalAvatar(widget.user.id);
 
         if (mounted) {
           setState(() {
-            _localAvatarBase64 =
-                _tempSelectedBase64!.isEmpty ? null : _tempSelectedBase64;
-            _tempSelectedBase64 = null;
             _tempSelectedBytes = null;
-            _hasCustomAvatar = _localAvatarBase64 != null ||
-                (widget.user.avatarUrl != null &&
-                    widget.user.avatarUrl!.isNotEmpty);
+            _tempSelectedName = null;
+            _removeAvatar = false;
+            _hasCustomAvatar = (widget.user.avatarUrl != null &&
+                widget.user.avatarUrl!.isNotEmpty);
           });
         }
       }
@@ -255,23 +252,20 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     // Choose which image bytes to display (preview)
     ImageProvider? avatarImage;
     Widget? initialsFallback;
 
     if (_tempSelectedBytes != null) {
       avatarImage = MemoryImage(_tempSelectedBytes!);
-    } else if (_tempSelectedBase64 == '') {
+    } else if (_removeAvatar) {
       // The user removed the image in the current session edit
-      initialsFallback = _buildInitialsPlaceholder(cs);
-    } else if (_localAvatarBase64 != null && _localAvatarBase64!.isNotEmpty) {
-      try {
-        avatarImage = MemoryImage(base64Decode(_localAvatarBase64!));
-      } catch (_) {
-        initialsFallback = _buildInitialsPlaceholder(cs);
-      }
-    } else if (widget.user.avatarUrl != null && widget.user.avatarUrl!.isNotEmpty) {
+      avatarImage = NetworkImage(
+        '${ApiClient.instance.baseUrl}/media/profiles/default.jpg',
+      );
+    } else if (widget.user.avatarUrl != null &&
+        widget.user.avatarUrl!.isNotEmpty) {
       avatarImage = NetworkImage(widget.user.avatarUrl!);
     } else {
       initialsFallback = _buildInitialsPlaceholder(cs);
@@ -314,7 +308,8 @@ class _ProfilePageState extends State<ProfilePage> {
                               radius: 65,
                               backgroundColor: cs.primary.withOpacity(0.12),
                               backgroundImage: avatarImage,
-                              child: avatarImage == null ? initialsFallback : null,
+                              child:
+                                  avatarImage == null ? initialsFallback : null,
                             ),
                           ),
                         ),
@@ -350,7 +345,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                   const SizedBox(height: 32),
-                  
+
                   // Profile info inputs
                   Card(
                     elevation: 0,
@@ -368,7 +363,10 @@ class _ProfilePageState extends State<ProfilePage> {
                         children: [
                           Text(
                             'Informações da Conta',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
                                   fontWeight: FontWeight.bold,
                                   color: cs.primary,
                                 ),
@@ -407,7 +405,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                   const SizedBox(height: 40),
-                  
+
                   // Save Button
                   SizedBox(
                     width: double.infinity,
@@ -450,7 +448,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _buildInitialsPlaceholder(ColorScheme cs) {
     final nameStr = _nameController.text.trim();
     String initials = 'U';
-    
+
     if (nameStr.isNotEmpty) {
       final parts = nameStr.split(' ').where((p) => p.isNotEmpty).toList();
       if (parts.isNotEmpty) {

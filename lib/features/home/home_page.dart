@@ -5,6 +5,7 @@ import '../../core/services/api_client.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/theme_notifier.dart';
 import '../lineup/views/lineup_page.dart';
+import '../phases/views/phases_page.dart';
 import '../scoring/views/score_page.dart';
 import '../settings/models/app_user_model.dart';
 import '../settings/views/profile_page.dart';
@@ -36,14 +37,20 @@ class _HomePageState extends State<HomePage> {
 
   Future<_HomeApiSummary> _loadHomeApiSummary() async {
     int? rankingPosition;
-    double totalPoints = 0;
-    int? stageId;
-    String? stageName;
+    double currentStagePoints = 0;
+    double previousStagePoints = 0;
+    int? currentStageId;
+    int? previousStageId;
+    String? currentStageName;
+    String? previousStageName;
+    bool competitionFinished = false;
     bool hasCurrentLineup = false;
     int lineupSelectedCount = 0;
     String? lineupCaptainName;
+    List<_FixtureSummary> currentFixtures = const [];
 
-    final rankingResponse = await ApiClient.instance.get('/api/ranking/global/');
+    final rankingResponse =
+        await ApiClient.instance.get('/api/ranking/global/');
     final List<dynamic> rankingJson = jsonDecode(rankingResponse.body);
     for (final item in rankingJson) {
       if (item is! Map) continue;
@@ -53,23 +60,26 @@ class _HomePageState extends State<HomePage> {
       }
     }
 
-    final stagesResponse = await ApiClient.instance.get('/api/stages/');
-    final List<dynamic> stagesJson = jsonDecode(stagesResponse.body);
-    if (stagesJson.isNotEmpty && stagesJson.first is Map) {
-      final currentStage = stagesJson.cast<dynamic>().firstWhere(
-            (stage) => stage is Map && stage['is_current'] == true,
-            orElse: () => null,
-          );
+    final stateResponse = await ApiClient.instance.get('/api/stages/state/');
+    final stateJson = jsonDecode(stateResponse.body);
+    if (stateJson is Map) {
+      competitionFinished = stateJson['competition_finished'] == true;
+      final currentStage = stateJson['current_stage'];
+      final previousStage = stateJson['previous_stage'];
       if (currentStage is Map) {
-        stageId = (currentStage['id'] as num?)?.toInt();
-        stageName = currentStage['name']?.toString();
+        currentStageId = (currentStage['id'] as num?)?.toInt();
+        currentStageName = currentStage['name']?.toString();
+      }
+      if (previousStage is Map) {
+        previousStageId = (previousStage['id'] as num?)?.toInt();
+        previousStageName = previousStage['name']?.toString();
       }
     }
 
-    if (stageId != null) {
+    if (currentStageId != null) {
       try {
         final lineupResponse = await ApiClient.instance.get(
-          '/api/lineups/by-stage/$stageId/',
+          '/api/lineups/by-stage/$currentStageId/',
         );
         final lineupJson = jsonDecode(lineupResponse.body);
         if (lineupJson is Map) {
@@ -87,9 +97,39 @@ class _HomePageState extends State<HomePage> {
             );
             final historyJson = jsonDecode(historyResponse.body);
             if (historyJson is Map) {
-              totalPoints =
+              currentStagePoints =
                   (historyJson['total_points'] as num?)?.toDouble() ?? 0;
             }
+          }
+        }
+      } on ApiException catch (error) {
+        if (error.statusCode != 404) rethrow;
+      }
+
+      final fixturesResponse = await ApiClient.instance.get(
+        '/api/fixtures/?stage=$currentStageId',
+      );
+      final List<dynamic> fixturesJson = jsonDecode(fixturesResponse.body);
+      currentFixtures = fixturesJson
+          .whereType<Map>()
+          .map((fixture) => _FixtureSummary.fromJson(fixture))
+          .toList(growable: false);
+    }
+
+    if (previousStageId != null) {
+      try {
+        final lineupResponse = await ApiClient.instance.get(
+          '/api/lineups/by-stage/$previousStageId/',
+        );
+        final lineupJson = jsonDecode(lineupResponse.body);
+        if (lineupJson is Map && lineupJson['id'] != null) {
+          final historyResponse = await ApiClient.instance.get(
+            '/api/lineups/${lineupJson['id']}/score-history/',
+          );
+          final historyJson = jsonDecode(historyResponse.body);
+          if (historyJson is Map) {
+            previousStagePoints =
+                (historyJson['total_points'] as num?)?.toDouble() ?? 0;
           }
         }
       } on ApiException catch (error) {
@@ -98,12 +138,16 @@ class _HomePageState extends State<HomePage> {
     }
 
     return _HomeApiSummary(
-      roundPoints: totalPoints,
+      currentStagePoints: currentStagePoints,
+      previousStagePoints: previousStagePoints,
       rankingPosition: rankingPosition,
-      stageName: stageName,
+      currentStageName: currentStageName,
+      previousStageName: previousStageName,
+      competitionFinished: competitionFinished,
       hasCurrentLineup: hasCurrentLineup,
       lineupSelectedCount: lineupSelectedCount,
       lineupCaptainName: lineupCaptainName,
+      currentFixtures: currentFixtures,
     );
   }
 
@@ -207,8 +251,9 @@ class _HomePageState extends State<HomePage> {
                 label: 'Time',
               ),
               NavigationDestination(
-                icon: Icon(Icons.search),
-                label: 'Jogadores',
+                icon: Icon(Icons.event_note_outlined),
+                selectedIcon: Icon(Icons.event_note),
+                label: 'Fases',
               ),
               NavigationDestination(
                 icon: Icon(Icons.leaderboard_outlined),
@@ -224,9 +269,12 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildPage(int index) {
     return switch (index) {
-      1 => const LineupPage(),
-      2 => const Placeholder(), // Jogadores
-      3 => ScorePage(currentUser: widget.user),
+      1 => LineupPage(onBack: () => setState(() => _selectedIndex = 0)),
+      2 => PhasesPage(onBack: () => setState(() => _selectedIndex = 0)),
+      3 => ScorePage(
+          currentUser: widget.user,
+          onBack: () => setState(() => _selectedIndex = 0),
+        ),
       _ => _HomeBody(
           userName: widget.user.name,
           homeApiSummaryFuture: _homeApiSummaryFuture,
@@ -239,20 +287,89 @@ class _HomePageState extends State<HomePage> {
 
 class _HomeApiSummary {
   const _HomeApiSummary({
-    required this.roundPoints,
+    required this.currentStagePoints,
+    required this.previousStagePoints,
     required this.rankingPosition,
-    required this.stageName,
+    required this.currentStageName,
+    required this.previousStageName,
+    required this.competitionFinished,
     required this.hasCurrentLineup,
     required this.lineupSelectedCount,
     required this.lineupCaptainName,
+    required this.currentFixtures,
   });
 
-  final double roundPoints;
+  final double currentStagePoints;
+  final double previousStagePoints;
   final int? rankingPosition;
-  final String? stageName;
+  final String? currentStageName;
+  final String? previousStageName;
+  final bool competitionFinished;
   final bool hasCurrentLineup;
   final int lineupSelectedCount;
   final String? lineupCaptainName;
+  final List<_FixtureSummary> currentFixtures;
+}
+
+class _FixtureSummary {
+  const _FixtureSummary({
+    required this.homeTeam,
+    required this.awayTeam,
+    required this.status,
+    this.homeScore,
+    this.awayScore,
+    this.kickoffAt,
+    this.venue,
+  });
+
+  final String homeTeam;
+  final String awayTeam;
+  final String status;
+  final int? homeScore;
+  final int? awayScore;
+  final DateTime? kickoffAt;
+  final String? venue;
+
+  String get scoreText {
+    if (homeScore == null || awayScore == null) return 'x';
+    return '$homeScore x $awayScore';
+  }
+
+  String get kickoffText {
+    if (kickoffAt == null) return status;
+    final local = kickoffAt!.toLocal();
+    final day = local.day.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '$day/$month $hour:$minute';
+  }
+
+  factory _FixtureSummary.fromJson(Map<dynamic, dynamic> json) {
+    final homeDetail = json['home_team_detail'];
+    final awayDetail = json['away_team_detail'];
+    final kickoffRaw = json['kickoff_at']?.toString();
+
+    return _FixtureSummary(
+      homeTeam: _teamName(homeDetail, json['home_team']),
+      awayTeam: _teamName(awayDetail, json['away_team']),
+      status: json['status']?.toString() ?? 'NS',
+      homeScore: (json['home_score'] as num?)?.toInt(),
+      awayScore: (json['away_score'] as num?)?.toInt(),
+      kickoffAt: kickoffRaw == null ? null : DateTime.tryParse(kickoffRaw),
+      venue: json['venue']?.toString(),
+    );
+  }
+
+  static String _teamName(dynamic detail, dynamic fallback) {
+    if (detail is Map) {
+      return detail['code']?.toString() ??
+          detail['name']?.toString() ??
+          fallback?.toString() ??
+          'Seleção';
+    }
+    return fallback?.toString() ?? 'Seleção';
+  }
 }
 
 // ─── Home body extraído para widget separado ─────────────────────────────────
@@ -325,6 +442,8 @@ class _HomeBody extends StatelessWidget {
                     summaryFuture: homeApiSummaryFuture,
                   ),
                 ],
+                const SizedBox(height: 16),
+                _CurrentFixturesSection(summaryFuture: homeApiSummaryFuture),
                 const SizedBox(height: 32),
               ],
             ),
@@ -349,11 +468,16 @@ class _ScoreCard extends StatelessWidget {
         final summary = snapshot.data;
         final isLoading = snapshot.connectionState == ConnectionState.waiting;
         final hasError = snapshot.hasError;
-        final pointsText = isLoading
+        final currentPointsText = isLoading
             ? '...'
             : hasError
                 ? '--'
-                : '${(summary?.roundPoints ?? 0).toStringAsFixed(1)} pts';
+                : '${(summary?.currentStagePoints ?? 0).toStringAsFixed(1)} pts';
+        final previousPointsText = isLoading
+            ? '...'
+            : hasError
+                ? '--'
+                : '${(summary?.previousStagePoints ?? 0).toStringAsFixed(1)} pts';
         final rankingText = isLoading
             ? '#...'
             : hasError
@@ -372,66 +496,100 @@ class _ScoreCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
           ),
           padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 420;
+              final metrics = [
+                _ScoreMetricData(
+                  label: 'Rodada atual',
+                  value: currentPointsText,
+                ),
+                _ScoreMetricData(
+                  label: summary?.previousStageName == null
+                      ? 'Fase anterior'
+                      : summary!.previousStageName!,
+                  value: previousPointsText,
+                ),
+                _ScoreMetricData(label: 'Ranking', value: rankingText),
+              ];
+
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      'Pontuação da rodada',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withOpacity(0.8),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      pointsText,
-                      style: const TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                        height: 1,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(width: 1, height: 48, color: Colors.white24),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Ranking',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white.withOpacity(0.8),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        rankingText,
-                        style: const TextStyle(
-                          fontSize: 36,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          height: 1,
-                        ),
-                      ),
+                    for (var i = 0; i < metrics.length; i++) ...[
+                      _ScoreMetric(metric: metrics[i], fontSize: 30),
+                      if (i < metrics.length - 1) ...[
+                        const SizedBox(height: 14),
+                        Container(height: 1, color: Colors.white24),
+                        const SizedBox(height: 14),
+                      ],
                     ],
-                  ),
-                ),
-              ),
-            ],
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  for (var i = 0; i < metrics.length; i++) ...[
+                    Expanded(child: _ScoreMetric(metric: metrics[i])),
+                    if (i < metrics.length - 1)
+                      Container(width: 1, height: 48, color: Colors.white24),
+                  ],
+                ],
+              );
+            },
           ),
         );
       },
+    );
+  }
+}
+
+class _ScoreMetricData {
+  const _ScoreMetricData({required this.label, required this.value});
+
+  final String label;
+  final String value;
+}
+
+class _ScoreMetric extends StatelessWidget {
+  const _ScoreMetric({required this.metric, this.fontSize = 28});
+
+  final _ScoreMetricData metric;
+  final double fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            metric.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.white.withValues(alpha: 0.8),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            metric.value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              height: 1,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -477,28 +635,33 @@ class _MyTeamCard extends StatelessWidget {
         final summary = snapshot.data;
         final isLoading = snapshot.connectionState == ConnectionState.waiting;
         final hasError = snapshot.hasError;
-        final hasStage = summary?.stageName != null;
+        final hasStage = summary?.currentStageName != null;
         final hasLineup = summary?.hasCurrentLineup == true;
+        final competitionFinished = summary?.competitionFinished == true;
 
         final title = isLoading
             ? 'Carregando seu time...'
             : hasError
                 ? 'Não foi possível carregar seu time'
-                : !hasStage
-                    ? 'Nenhuma rodada atual cadastrada'
-                    : hasLineup
-                        ? 'Escalação da ${summary!.stageName}'
-                        : 'Você não tem escalação para ${summary!.stageName}';
+                : competitionFinished
+                    ? 'Competição encerrada'
+                    : !hasStage
+                        ? 'Nenhuma rodada atual cadastrada'
+                        : hasLineup
+                            ? 'Escalação da ${summary!.currentStageName}'
+                            : 'Você não tem escalação para ${summary!.currentStageName}';
         final subtitle = isLoading
             ? 'Buscando escalação na API'
             : hasError
                 ? 'Puxe para atualizar e tente novamente'
-                : !hasStage
-                    ? 'Quando uma fase atual existir, ela aparecerá aqui'
-                    : hasLineup
-                        ? '${summary!.lineupSelectedCount}/11 escalados'
-                            '${summary.lineupCaptainName == null ? '' : ' • Cap: ${summary.lineupCaptainName}'}'
-                        : 'Monte seu time para pontuar nesta rodada';
+                : competitionFinished
+                    ? 'Veja sua posição final no ranking'
+                    : !hasStage
+                        ? 'Quando uma fase atual existir, ela aparecerá aqui'
+                        : hasLineup
+                            ? '${summary!.lineupSelectedCount}/11 escalados'
+                                '${summary.lineupCaptainName == null ? '' : ' • Cap: ${summary.lineupCaptainName}'}'
+                            : 'Monte seu time para pontuar nesta rodada';
 
         return Container(
           decoration: BoxDecoration(
@@ -546,9 +709,15 @@ class _MyTeamCard extends StatelessWidget {
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                onPressed: hasError || !hasStage ? null : onBuildTeam,
+                onPressed: hasError || !hasStage || competitionFinished
+                    ? null
+                    : onBuildTeam,
                 child: Text(
-                  hasLineup ? 'Editar' : 'Montar',
+                  competitionFinished
+                      ? 'Encerrado'
+                      : hasLineup
+                          ? 'Editar'
+                          : 'Montar',
                   style: const TextStyle(fontSize: 13),
                 ),
               ),
@@ -600,14 +769,18 @@ class _RoundCard extends StatelessWidget {
             ? 'Carregando rodada...'
             : hasError
                 ? 'Não foi possível carregar'
-                : summary?.stageName ?? 'Nenhuma rodada cadastrada';
+                : summary?.competitionFinished == true
+                    ? 'Competição encerrada'
+                    : summary?.currentStageName ?? 'Nenhuma rodada cadastrada';
         final subtitle = isLoading
             ? 'Buscando informações da API'
             : hasError
                 ? 'Puxe para atualizar e tente novamente'
-                : summary?.stageName == null
-                    ? 'As fases aparecerão aqui quando forem cadastradas'
-                    : 'Fase disponível para escalação e pontuação';
+                : summary?.competitionFinished == true
+                    ? 'A última fase foi finalizada. Confira sua posição no ranking.'
+                    : summary?.currentStageName == null
+                        ? 'As fases aparecerão aqui quando forem cadastradas'
+                        : 'Fase disponível para escalação e pontuação';
 
         return Container(
           decoration: BoxDecoration(
@@ -647,6 +820,181 @@ class _RoundCard extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _CurrentFixturesSection extends StatelessWidget {
+  const _CurrentFixturesSection({required this.summaryFuture});
+
+  final Future<_HomeApiSummary> summaryFuture;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<_HomeApiSummary>(
+      future: summaryFuture,
+      builder: (context, snapshot) {
+        final summary = snapshot.data;
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
+
+        if (isLoading) {
+          return const _FixturesCard(
+            title: 'Partidas da fase atual',
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return const _FixturesCard(
+            title: 'Partidas da fase atual',
+            child: _EmptyFixturesMessage(
+              message: 'Não foi possível carregar as partidas agora.',
+            ),
+          );
+        }
+
+        if (summary?.competitionFinished == true) {
+          return const _FixturesCard(
+            title: 'Competição encerrada',
+            child: _EmptyFixturesMessage(
+              message:
+                  'Todas as fases foram finalizadas. Veja sua posição no ranking.',
+            ),
+          );
+        }
+
+        if (summary?.currentStageName == null) {
+          return const _FixturesCard(
+            title: 'Partidas da fase atual',
+            child: _EmptyFixturesMessage(
+              message: 'Nenhuma fase atual cadastrada na API.',
+            ),
+          );
+        }
+
+        final fixtures = summary?.currentFixtures ?? const <_FixtureSummary>[];
+        if (fixtures.isEmpty) {
+          return _FixturesCard(
+            title: 'Partidas da ${summary!.currentStageName}',
+            child: const _EmptyFixturesMessage(
+              message: 'Nenhuma partida cadastrada para esta fase.',
+            ),
+          );
+        }
+
+        return _FixturesCard(
+          title: 'Partidas da ${summary!.currentStageName}',
+          child: Column(
+            children: fixtures
+                .map((fixture) => _FixtureTile(fixture: fixture))
+                .toList(growable: false),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _FixturesCard extends StatelessWidget {
+  const _FixturesCard({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionTitle(title: title),
+        const SizedBox(height: 10),
+        Container(
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.6)),
+          ),
+          child: child,
+        ),
+      ],
+    );
+  }
+}
+
+class _FixtureTile extends StatelessWidget {
+  const _FixtureTile({required this.fixture});
+
+  final _FixtureSummary fixture;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              fixture.homeTeam,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Column(
+              children: [
+                Text(
+                  fixture.scoreText,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+                Text(
+                  fixture.kickoffText,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Text(
+              fixture.awayTeam,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.end,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyFixturesMessage extends StatelessWidget {
+  const _EmptyFixturesMessage({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Text(
+        message,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+      ),
     );
   }
 }

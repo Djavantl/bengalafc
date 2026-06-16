@@ -118,25 +118,39 @@ class AuthRepository {
   Future<AppUserModel> updateProfile({
     String? name,
     String? avatarUrl,
+    List<int>? avatarBytes,
+    String? avatarFilename,
     bool clearAvatar = false,
   }) async {
     try {
-      final body = <String, dynamic>{};
+      final body = <String, String>{};
       if (name != null) {
         final parts = name.trim().split(' ');
         body['first_name'] = parts.first;
         body['last_name'] = parts.length > 1 ? parts.sublist(1).join(' ') : '';
       }
-      if (clearAvatar) {
-        body['photo'] = null;
-      } else if (avatarUrl != null) {
-        body['photo'] = avatarUrl;
-      }
 
-      await ApiClient.instance.patch(
-        '/api/users/update_profile/',
-        body,
-      );
+      if (avatarBytes != null && avatarFilename != null) {
+        await ApiClient.instance.patchMultipart(
+          '/api/users/update_profile/',
+          fields: body,
+          fileField: 'photo',
+          fileBytes: avatarBytes,
+          filename: avatarFilename,
+        );
+      } else {
+        final jsonBody = <String, dynamic>{...body};
+        if (clearAvatar) {
+          jsonBody['photo'] = null;
+        } else if (avatarUrl != null) {
+          jsonBody['photo'] = avatarUrl;
+        }
+
+        await ApiClient.instance.patch(
+          '/api/users/update_profile/',
+          jsonBody,
+        );
+      }
 
       final user = await _fetchProfile();
       _currentUser = user;
@@ -160,8 +174,8 @@ class AuthRepository {
     final name = '$firstName $lastName'.trim();
     final displayName =
         name.isNotEmpty ? name : (data['username'] as String? ?? 'Usuário');
-    final avatar = data['photo'] as String?;
-    
+    final avatar = (data['photo_url'] ?? data['photo']) as String?;
+
     String? fullAvatarUrl;
     if (avatar != null) {
       if (avatar.startsWith('http://') || avatar.startsWith('https://')) {

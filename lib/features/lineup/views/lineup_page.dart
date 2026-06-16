@@ -6,19 +6,23 @@ import '../models/lineup_player_model.dart';
 import '../viewmodels/lineup_view_model.dart';
 
 class LineupPage extends StatelessWidget {
-  const LineupPage({super.key});
+  const LineupPage({super.key, this.onBack});
+
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => LineupViewModel(),
-      child: const _LineupView(),
+      child: _LineupView(onBack: onBack),
     );
   }
 }
 
 class _LineupView extends StatelessWidget {
-  const _LineupView();
+  const _LineupView({this.onBack});
+
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +45,8 @@ class _LineupView extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    _BackHeader(title: 'Escalação', onBack: onBack),
+                    const SizedBox(height: 12),
                     if (viewModel.isLoading) ...[
                       const LinearProgressIndicator(),
                       const SizedBox(height: 12),
@@ -74,6 +80,43 @@ class _LineupView extends StatelessWidget {
           },
         );
       },
+    );
+  }
+}
+
+class _BackHeader extends StatelessWidget {
+  const _BackHeader({required this.title, this.onBack});
+
+  final String title;
+  final VoidCallback? onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        IconButton(
+          tooltip: 'Voltar',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (onBack != null) {
+              onBack!();
+              return;
+            }
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
+          },
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            title,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -129,7 +172,7 @@ class _LineupHeader extends StatelessWidget {
                 children: [
                   if (viewModel.selectedCount > 0 || viewModel.lineupId != null)
                     OutlinedButton.icon(
-                      onPressed: viewModel.isLoading
+                      onPressed: !viewModel.canEditLineup
                           ? null
                           : () async {
                               final shouldClear = await showDialog<bool>(
@@ -142,7 +185,8 @@ class _LineupHeader extends StatelessWidget {
                                   actions: [
                                     TextButton(
                                       onPressed: () =>
-                                          Navigator.of(dialogContext).pop(false),
+                                          Navigator.of(dialogContext)
+                                              .pop(false),
                                       child: const Text('Cancelar'),
                                     ),
                                     FilledButton(
@@ -180,7 +224,7 @@ class _LineupHeader extends StatelessWidget {
                       label: const Text('Limpar'),
                     ),
                   FilledButton.icon(
-                    onPressed: (viewModel.isComplete && !viewModel.isLoading)
+                    onPressed: (viewModel.isComplete && viewModel.canEditLineup)
                         ? () async {
                             try {
                               await viewModel.saveLineup();
@@ -197,7 +241,8 @@ class _LineupHeader extends StatelessWidget {
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
-                                    content: Text('Erro ao salvar escalação: $e'),
+                                    content:
+                                        Text('Erro ao salvar escalação: $e'),
                                     backgroundColor: Colors.red,
                                   ),
                                 );
@@ -220,7 +265,13 @@ class _LineupHeader extends StatelessWidget {
                                 : Icons.save_outlined,
                             size: 18,
                           ),
-                    label: Text(viewModel.isSaved ? 'Salvo' : 'Salvar'),
+                    label: Text(
+                      viewModel.competitionFinished
+                          ? 'Encerrado'
+                          : viewModel.isSaved
+                              ? 'Salvo'
+                              : 'Salvar',
+                    ),
                   ),
                 ],
               ),
@@ -265,8 +316,9 @@ class _LineupHeader extends StatelessWidget {
                 )
                 .toList(growable: false),
             selected: {viewModel.selectedFormation},
-            onSelectionChanged: (selection) =>
-                viewModel.changeFormation(selection.first),
+            onSelectionChanged: viewModel.canEditLineup
+                ? (selection) => viewModel.changeFormation(selection.first)
+                : null,
           ),
         ],
       ),
@@ -376,6 +428,17 @@ class _PitchCard extends StatelessWidget {
     LineupViewModel viewModel,
     LineupSlot slot,
   ) {
+    if (viewModel.competitionFinished) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'A competição acabou. Não há como escalar times agora.',
+          ),
+        ),
+      );
+      return;
+    }
+
     if (viewModel.activeStageId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -547,28 +610,28 @@ class _PlayerPickerSheetState extends State<_PlayerPickerSheet> {
                   : filteredOptions.isEmpty
                       ? _PlayerPickerEmptyState(colorScheme: cs)
                       : ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: filteredOptions.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final player = filteredOptions[index];
-                        final isSelected =
-                            player.id == widget.slot.player?.id;
+                          shrinkWrap: true,
+                          itemCount: filteredOptions.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final player = filteredOptions[index];
+                            final isSelected =
+                                player.id == widget.slot.player?.id;
 
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: _PlayerAvatar(player: player),
-                          title: Text(player.name),
-                          subtitle: Text(
-                            '${player.nationalTeam} • ${player.averagePoints.toStringAsFixed(1)} pts • ${player.selectedPercentage.toStringAsFixed(0)}%',
-                          ),
-                          trailing: isSelected
-                              ? const Icon(Icons.check_circle)
-                              : const Icon(Icons.add_circle_outline),
-                          onTap: () => widget.onSelect(player),
-                        );
-                      },
-                    ),
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: _PlayerAvatar(player: player),
+                              title: Text(player.name),
+                              subtitle: Text(
+                                '${player.nationalTeam} • ${player.averagePoints.toStringAsFixed(1)} pts • ${player.selectedPercentage.toStringAsFixed(0)}%',
+                              ),
+                              trailing: isSelected
+                                  ? const Icon(Icons.check_circle)
+                                  : const Icon(Icons.add_circle_outline),
+                              onTap: () => widget.onSelect(player),
+                            );
+                          },
+                        ),
             ),
             if (widget.onRemove != null) ...[
               const SizedBox(height: 8),
@@ -783,14 +846,18 @@ class _PlayerSlotButton extends StatelessWidget {
                       shape: BoxShape.circle,
                       color: Colors.white,
                       border: Border.all(color: AppColors.accent, width: 2),
-                      image: (player != null && player.photoUrl != null && player.photoUrl!.isNotEmpty)
+                      image: (player != null &&
+                              player.photoUrl != null &&
+                              player.photoUrl!.isNotEmpty)
                           ? DecorationImage(
                               image: NetworkImage(player.photoUrl!),
                               fit: BoxFit.cover,
                             )
                           : null,
                     ),
-                    child: (player != null && player.photoUrl != null && player.photoUrl!.isNotEmpty)
+                    child: (player != null &&
+                            player.photoUrl != null &&
+                            player.photoUrl!.isNotEmpty)
                         ? null
                         : Icon(
                             player == null

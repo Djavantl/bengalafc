@@ -12,7 +12,8 @@ class ApiClient {
     if (env == 'local') {
       return dotenv.env['API_URL_LOCAL'] ?? 'http://localhost:8000';
     }
-    return dotenv.env['API_URL_PRODUCTION'] ?? 'https://bengalafc-api-production.up.railway.app';
+    return dotenv.env['API_URL_PRODUCTION'] ??
+        'https://bengalafc-api-production.up.railway.app';
   }
 
   String? _token;
@@ -91,6 +92,37 @@ class ApiClient {
       headers: _headers(requireAuth),
       body: jsonEncode(body),
     );
+    return _handleResponse(response, requireAuth: requireAuth);
+  }
+
+  Future<http.Response> patchMultipart(
+    String path, {
+    Map<String, String> fields = const {},
+    List<int>? fileBytes,
+    String? fileField,
+    String? filename,
+    bool requireAuth = true,
+  }) async {
+    final url = Uri.parse('$baseUrl$path');
+    final request = http.MultipartRequest('PATCH', url);
+    request.headers.addAll({
+      'Accept': 'application/json',
+      if (requireAuth && _token != null) 'Authorization': 'Bearer $_token',
+    });
+    request.fields.addAll(fields);
+
+    if (fileBytes != null && fileField != null && filename != null) {
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          fileField,
+          fileBytes,
+          filename: filename,
+        ),
+      );
+    }
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
     return _handleResponse(response, requireAuth: requireAuth);
   }
 

@@ -23,7 +23,12 @@ class UserAvatar extends StatelessWidget {
         final localBase64 = snapshot.data;
         Widget avatarWidget;
 
-        if (localBase64 != null && localBase64.isNotEmpty) {
+        if (user.avatarUrl != null && user.avatarUrl!.isNotEmpty) {
+          avatarWidget = CircleAvatar(
+            radius: radius,
+            backgroundImage: NetworkImage(user.avatarUrl!),
+          );
+        } else if (localBase64 != null && localBase64.isNotEmpty) {
           try {
             final bytes = base64Decode(localBase64);
             avatarWidget = CircleAvatar(
@@ -33,11 +38,6 @@ class UserAvatar extends StatelessWidget {
           } catch (e) {
             avatarWidget = _buildFallbackAvatar(context);
           }
-        } else if (user.avatarUrl != null && user.avatarUrl!.isNotEmpty) {
-          avatarWidget = CircleAvatar(
-            radius: radius,
-            backgroundImage: NetworkImage(user.avatarUrl!),
-          );
         } else {
           avatarWidget = _buildFallbackAvatar(context);
         }
@@ -57,7 +57,7 @@ class UserAvatar extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final nameStr = user.name.trim();
     String initials = 'U';
-    
+
     if (nameStr.isNotEmpty) {
       final parts = nameStr.split(' ').where((p) => p.isNotEmpty).toList();
       if (parts.isNotEmpty) {

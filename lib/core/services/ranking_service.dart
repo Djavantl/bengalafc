@@ -12,8 +12,7 @@ class RankingService {
       final List<dynamic> rankingJson = jsonDecode(response.body);
 
       return [
-        for (final data in rankingJson)
-          _parseRankingEntry(data, currentUser),
+        for (final data in rankingJson) _parseRankingEntry(data, currentUser),
       ];
     } catch (e) {
       throw Exception('Falha ao carregar ranking do servidor: $e');
@@ -29,11 +28,15 @@ class RankingService {
       final username = data['username']?.toString() ?? 'Usuário';
       final points = (data['points'] as num?)?.toDouble() ?? 0.0;
       final position = (data['position'] as num?)?.toInt() ?? 0;
+      final avatarUrl = _fullAvatarUrl(
+        (data['photo_url'] ?? data['photo'])?.toString(),
+      );
 
       return RankingUserScore(
         user: AppUserModel(
           id: id,
           name: username,
+          avatarUrl: avatarUrl,
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
         ),
@@ -54,5 +57,13 @@ class RankingService {
       position: 0,
       isCurrentUser: false,
     );
+  }
+
+  String? _fullAvatarUrl(String? value) {
+    if (value == null || value.isEmpty) return null;
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
+    }
+    return '${ApiClient.instance.baseUrl}$value';
   }
 }

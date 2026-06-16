@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/ranking_service.dart';
-import '../../../core/theme/app_colors.dart';
 import '../../ranking/models/ranking_user_score.dart';
 import '../../settings/models/app_user_model.dart';
 import '../../settings/views/widgets/user_avatar.dart';
@@ -12,9 +11,11 @@ class ScorePage extends StatefulWidget {
   const ScorePage({
     super.key,
     required this.currentUser,
+    this.onBack,
   });
 
   final AppUserModel currentUser;
+  final VoidCallback? onBack;
 
   @override
   State<ScorePage> createState() => _ScorePageState();
@@ -39,7 +40,16 @@ class _ScorePageState extends State<ScorePage> {
   Widget build(BuildContext context) {
     final notifier = context.watch<ScoringNotifier>();
     final cs = Theme.of(context).colorScheme;
-    return _buildBody(notifier, cs);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+          child: _BackHeader(title: 'Ranking', onBack: widget.onBack),
+        ),
+        Expanded(child: _buildBody(notifier, cs)),
+      ],
+    );
   }
 
   Widget _buildBody(ScoringNotifier notifier, ColorScheme cs) {
@@ -73,6 +83,43 @@ class _ScorePageState extends State<ScorePage> {
         currentUser: widget.currentUser,
       );
     });
+  }
+}
+
+class _BackHeader extends StatelessWidget {
+  const _BackHeader({required this.title, this.onBack});
+
+  final String title;
+  final VoidCallback? onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        IconButton(
+          tooltip: 'Voltar',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (onBack != null) {
+              onBack!();
+              return;
+            }
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
+          },
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            title,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -363,9 +410,8 @@ class _PhaseCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = isDark
-        ? cs.surfaceContainerHighest
-        : const Color(0xFFEEEEE8);
+    final cardBg =
+        isDark ? cs.surfaceContainerHighest : const Color(0xFFEEEEE8);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -439,7 +485,6 @@ class _LoadingState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       child: Column(
@@ -489,7 +534,8 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.emoji_events_outlined, size: 56, color: cs.onSurfaceVariant),
+            Icon(Icons.emoji_events_outlined,
+                size: 56, color: cs.onSurfaceVariant),
             const SizedBox(height: 16),
             Text(
               'Nenhuma pontuação ainda',

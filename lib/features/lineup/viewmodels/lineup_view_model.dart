@@ -50,6 +50,7 @@ class LineupViewModel extends ChangeNotifier {
   String? errorMessage;
   int? activeStageId;
   int? lineupId;
+  bool competitionFinished = false;
 
   late List<LineupSlot> _slots;
   late List<LineupPlayerModel> _availablePlayers;
@@ -76,6 +77,9 @@ class LineupViewModel extends ChangeNotifier {
 
   bool get isComplete => selectedCount == totalSlots;
 
+  bool get canEditLineup =>
+      !competitionFinished && activeStageId != null && !isLoading;
+
   String? get captainName {
     for (final player in selectedPlayers) {
       if (player.id == captainPlayerId) return player.name;
@@ -92,29 +96,43 @@ class LineupViewModel extends ChangeNotifier {
 
   String _mapBackendPosition(String? backendPos) {
     if (backendPos == null || backendPos.isEmpty) return 'ZAG';
-    
+
     final parts = backendPos.split(',');
     final mapped = <String>{};
-    
+
     for (final part in parts) {
       final pos = part.trim().toLowerCase();
-      if (pos == 'gk' || pos.contains('goalkeeper') || pos == 'goleiro' || pos == 'gol') {
+      if (pos == 'gk' ||
+          pos.contains('goalkeeper') ||
+          pos == 'goleiro' ||
+          pos == 'gol') {
         mapped.add('GOL');
-      } else if (pos == 'mf' || pos.contains('midfielder') || pos == 'meia' || pos == 'mei') {
+      } else if (pos == 'mf' ||
+          pos.contains('midfielder') ||
+          pos == 'meia' ||
+          pos == 'mei') {
         mapped.add('MEI');
-      } else if (pos == 'fw' || pos.contains('attacker') || pos.contains('forward') || pos == 'atacante' || pos == 'ata') {
+      } else if (pos == 'fw' ||
+          pos.contains('attacker') ||
+          pos.contains('forward') ||
+          pos == 'atacante' ||
+          pos == 'ata') {
         mapped.add('ATA');
       } else if (pos == 'ld') {
         mapped.add('LD');
       } else if (pos == 'le') {
         mapped.add('LE');
-      } else if (pos == 'df' || pos.contains('defender') || pos == 'zagueiro' || pos == 'lateral' || pos == 'zag') {
+      } else if (pos == 'df' ||
+          pos.contains('defender') ||
+          pos == 'zagueiro' ||
+          pos == 'lateral' ||
+          pos == 'zag') {
         mapped.add('ZAG');
       } else {
         mapped.add('ZAG');
       }
     }
-    
+
     return mapped.join(',');
   }
 
@@ -175,13 +193,20 @@ class LineupViewModel extends ChangeNotifier {
   }
 
   Future<void> loadPlayersForPosition(String slotPos) async {
+    if (competitionFinished) {
+      errorMessage = 'A competição acabou. Não há como escalar times agora.';
+      notifyListeners();
+      return;
+    }
+
     if (activeStageId == null) {
       errorMessage = 'Nenhuma rodada atual cadastrada no servidor.';
       notifyListeners();
       return;
     }
 
-    if (_loadedPositions.contains(slotPos) || _loadingPositions.contains(slotPos)) {
+    if (_loadedPositions.contains(slotPos) ||
+        _loadingPositions.contains(slotPos)) {
       return;
     }
 
@@ -192,13 +217,19 @@ class LineupViewModel extends ChangeNotifier {
       final apiPos = _mapSlotPosToApiPos(slotPos);
       final urlPath = '/api/players/?position=$apiPos&stage=$activeStageId';
       final response = await ApiClient.instance.get(urlPath);
-      
+
       final List<dynamic> playersJson = jsonDecode(response.body);
 
-      final List<LineupPlayerModel> loadedList = playersJson.map<LineupPlayerModel>((data) {
+      final List<LineupPlayerModel> loadedList =
+          playersJson.map<LineupPlayerModel>((data) {
         final id = data['id']?.toString() ?? '';
         final name = data['name']?.toString() ?? '';
-        final nationalTeam = (data['team_detail']?['code'] ?? data['team_detail']?['name'] ?? data['nationality'] ?? 'BRA').toString().toUpperCase();
+        final nationalTeam = (data['team_detail']?['code'] ??
+                data['team_detail']?['name'] ??
+                data['nationality'] ??
+                'BRA')
+            .toString()
+            .toUpperCase();
         final position = _mapBackendPosition(data['position']?.toString());
         const averagePoints = 0.0;
         const selectedPercentage = 0.0;
@@ -256,29 +287,40 @@ class LineupViewModel extends ChangeNotifier {
 
   Future<void> loadLineup() async {
     try {
-      final stagesResponse = await ApiClient.instance.get('/api/stages/');
-      final List<dynamic> stagesJson = jsonDecode(stagesResponse.body);
-      
-      if (stagesJson.isEmpty) {
-        errorMessage = 'Nenhuma rodada/fase cadastrada no servidor.';
+      final stateResponse = await ApiClient.instance.get('/api/stages/state/');
+      final stateJson = jsonDecode(stateResponse.body);
+      if (stateJson is! Map) {
+        errorMessage = 'Não foi possível carregar o estado da competição.';
         _clearLocalLineupState();
         notifyListeners();
         return;
       }
-      
-      final currentStage = stagesJson.cast<dynamic>().firstWhere(
-            (stage) => stage is Map && stage['is_current'] == true,
-            orElse: () => null,
-          );
+
+      competitionFinished = stateJson['competition_finished'] == true;
+      if (competitionFinished) {
+        activeStageId = null;
+        roundName = 'Competição encerrada';
+        marketStatus = 'Escalação bloqueada';
+        errorMessage = 'A competição acabou. Não há como escalar times agora.';
+        _clearLocalLineupState(keepStage: true);
+        _availablePlayers.clear();
+        _loadedPositions.clear();
+        _loadingPositions.clear();
+        notifyListeners();
+        return;
+      }
+
+      final currentStage = stateJson['current_stage'];
       if (currentStage is! Map) {
         activeStageId = null;
+        marketStatus = 'Mercado fechado';
         errorMessage = 'Nenhuma rodada atual cadastrada no servidor.';
         _clearLocalLineupState();
         notifyListeners();
         return;
       }
 
-      final stageId = currentStage['id'] as int;
+      final stageId = (currentStage['id'] as num).toInt();
       if (activeStageId != null && activeStageId != stageId) {
         _availablePlayers.clear();
         _loadedPositions.clear();
@@ -286,11 +328,13 @@ class LineupViewModel extends ChangeNotifier {
       }
       activeStageId = stageId;
       roundName = currentStage['name']?.toString() ?? roundName;
+      marketStatus = 'Mercado aberto';
 
       try {
-        final lineupResponse = await ApiClient.instance.get('/api/lineups/by-stage/$activeStageId/');
+        final lineupResponse = await ApiClient.instance
+            .get('/api/lineups/by-stage/$activeStageId/');
         final Map<String, dynamic> lineupJson = jsonDecode(lineupResponse.body);
-        
+
         lineupId = lineupJson['id'] as int?;
         final List<dynamic> players = lineupJson['players'] ?? [];
         final captainIdVal = lineupJson['captain']?.toString();
@@ -301,22 +345,26 @@ class LineupViewModel extends ChangeNotifier {
           if (detail != null) {
             final id = detail['id']?.toString() ?? '';
             final name = detail['name']?.toString() ?? '';
-            final nationalTeam = (detail['team_detail']?['code'] ?? detail['team_detail']?['name'] ?? detail['nationality'] ?? 'BRA').toString().toUpperCase();
-            final position = _mapBackendPosition(detail['position']?.toString());
+            final nationalTeam = (detail['team_detail']?['code'] ??
+                    detail['team_detail']?['name'] ??
+                    detail['nationality'] ??
+                    'BRA')
+                .toString()
+                .toUpperCase();
+            final position =
+                _mapBackendPosition(detail['position']?.toString());
             final photoUrl = detail['photo']?.toString();
 
-            loadedPlayers.add(
-              LineupPlayerModel(
-                id: id,
-                name: name,
-                nationalTeam: nationalTeam,
-                position: position,
-                averagePoints: 0.0,
-                selectedPercentage: 0.0,
-                isStarter: true,
-                photoUrl: photoUrl,
-              )
-            );
+            loadedPlayers.add(LineupPlayerModel(
+              id: id,
+              name: name,
+              nationalTeam: nationalTeam,
+              position: position,
+              averagePoints: 0.0,
+              selectedPercentage: 0.0,
+              isStarter: true,
+              photoUrl: photoUrl,
+            ));
           }
         }
 
@@ -325,7 +373,9 @@ class LineupViewModel extends ChangeNotifier {
           _slots = _buildSlotsForFormation(selectedFormation);
 
           for (final player in loadedPlayers) {
-            final slotIndex = _slots.indexWhere((slot) => slot.player == null && _isPositionCompatible(player.position, slot.position));
+            final slotIndex = _slots.indexWhere((slot) =>
+                slot.player == null &&
+                _isPositionCompatible(player.position, slot.position));
             if (slotIndex != -1) {
               _slots[slotIndex] = _slots[slotIndex].copyWith(player: player);
             }
@@ -351,13 +401,16 @@ class LineupViewModel extends ChangeNotifier {
 
   List<LineupPlayerModel> optionsForSlot(LineupSlot slot) {
     final filteredByPos = _availablePlayers
-        .where((player) => _isPositionCompatible(player.position, slot.position))
+        .where(
+            (player) => _isPositionCompatible(player.position, slot.position))
         .toList();
-    
-    final finalOptions = filteredByPos.where(
+
+    final finalOptions = filteredByPos
+        .where(
           (player) =>
               player.id == slot.player?.id ||
-              !_slots.any((selectedSlot) => selectedSlot.player?.id == player.id),
+              !_slots
+                  .any((selectedSlot) => selectedSlot.player?.id == player.id),
         )
         .toList(growable: false)
       ..sort((a, b) => b.averagePoints.compareTo(a.averagePoints));
@@ -365,6 +418,8 @@ class LineupViewModel extends ChangeNotifier {
   }
 
   void selectPlayer(String slotId, LineupPlayerModel player) {
+    if (!canEditLineup) return;
+
     final index = _slots.indexWhere((slot) => slot.id == slotId);
     if (index == -1) return;
 
@@ -372,7 +427,8 @@ class LineupViewModel extends ChangeNotifier {
     if (!_isPositionCompatible(player.position, slot.position)) return;
 
     final repeatedPlayerIndex = _slots.indexWhere(
-      (otherSlot) => otherSlot.id != slotId && otherSlot.player?.id == player.id,
+      (otherSlot) =>
+          otherSlot.id != slotId && otherSlot.player?.id == player.id,
     );
     if (repeatedPlayerIndex != -1) return;
 
@@ -383,6 +439,8 @@ class LineupViewModel extends ChangeNotifier {
   }
 
   void clearSlot(String slotId) {
+    if (!canEditLineup) return;
+
     final index = _slots.indexWhere((slot) => slot.id == slotId);
     if (index == -1) return;
 
@@ -397,6 +455,8 @@ class LineupViewModel extends ChangeNotifier {
   }
 
   void setCaptain(String playerId) {
+    if (!canEditLineup) return;
+
     if (!selectedPlayers.any((player) => player.id == playerId)) return;
 
     captainPlayerId = playerId;
@@ -405,6 +465,8 @@ class LineupViewModel extends ChangeNotifier {
   }
 
   void changeFormation(String formation) {
+    if (!canEditLineup) return;
+
     if (!formationOptions.contains(formation)) return;
 
     selectedFormation = formation;
@@ -421,25 +483,36 @@ class LineupViewModel extends ChangeNotifier {
   }
 
   Future<void> saveLineup() async {
+    if (competitionFinished) {
+      throw Exception('A competição acabou. Não há como escalar times agora.');
+    }
+
     isLoading = true;
     errorMessage = null;
     notifyListeners();
 
     try {
       final playerIds = selectedPlayers.map((p) => int.parse(p.id)).toList();
-      final captainIdVal = captainPlayerId != null ? int.parse(captainPlayerId!) : null;
+      final captainIdVal =
+          captainPlayerId != null ? int.parse(captainPlayerId!) : null;
 
       if (activeStageId == null) {
-        final stagesResponse = await ApiClient.instance.get('/api/stages/');
-        final List<dynamic> stagesJson = jsonDecode(stagesResponse.body);
-        final currentStage = stagesJson.cast<dynamic>().firstWhere(
-              (stage) => stage is Map && stage['is_current'] == true,
-              orElse: () => null,
-            );
+        final stateResponse =
+            await ApiClient.instance.get('/api/stages/state/');
+        final stateJson = jsonDecode(stateResponse.body);
+        if (stateJson is Map && stateJson['competition_finished'] == true) {
+          competitionFinished = true;
+          throw Exception(
+            'A competição acabou. Não há como escalar times agora.',
+          );
+        }
+        final currentStage =
+            stateJson is Map ? stateJson['current_stage'] : null;
         if (currentStage is Map) {
-          activeStageId = currentStage['id'] as int;
+          activeStageId = (currentStage['id'] as num).toInt();
         } else {
-          throw Exception('Nenhuma rodada atual cadastrada no servidor para salvar a escalação.');
+          throw Exception(
+              'Nenhuma rodada atual cadastrada no servidor para salvar a escalação.');
         }
       }
 
@@ -469,6 +542,10 @@ class LineupViewModel extends ChangeNotifier {
   }
 
   Future<void> clearLineup() async {
+    if (competitionFinished) {
+      throw Exception('A competição acabou. Não há como escalar times agora.');
+    }
+
     isLoading = true;
     errorMessage = null;
     notifyListeners();
@@ -501,8 +578,6 @@ class LineupViewModel extends ChangeNotifier {
       _loadingPositions.clear();
     }
   }
-
-
 
   List<LineupSlot> _buildSlotsForFormation(
     String formation, {
