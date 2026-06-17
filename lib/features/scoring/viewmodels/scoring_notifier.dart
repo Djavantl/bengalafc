@@ -13,6 +13,19 @@ class ScoringNotifier extends ChangeNotifier {
   ScoringStatus status = ScoringStatus.idle;
   String? errorMessage;
 
+  // ✅ getter exigido pelo teste
+  double get totalPoints =>
+      scores.fold(0.0, (sum, s) => sum + s.totalPoints);
+
+  // ✅ getter exigido pelo teste — retorna null se não houver scores
+  int? get bestRank {
+    if (scores.isEmpty) return null;
+    return scores
+        .map((s) => s.rankPosition)
+        .where((r) => r > 0)
+        .fold<int?>(null, (best, r) => best == null || r < best ? r : best);
+  }
+
   Future<void> load(String userId) async {
     status = ScoringStatus.loading;
     errorMessage = null;

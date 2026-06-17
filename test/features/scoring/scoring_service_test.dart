@@ -16,15 +16,17 @@ void main() {
   });
 
   final fakeScores = [
-    UserPhaseScore(
+    const UserPhaseScore(        // ✅ const
       userId: 'user_1',
       phaseNumber: 1,
+      phaseName: 'Fase 1',       // ✅ adicionado
       totalPoints: 85.0,
       rankPosition: 3,
     ),
-    UserPhaseScore(
+    const UserPhaseScore(        // ✅ const
       userId: 'user_1',
       phaseNumber: 2,
+      phaseName: 'Fase 2',       // ✅ adicionado
       totalPoints: 60.0,
       rankPosition: 5,
     ),

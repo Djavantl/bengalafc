@@ -107,12 +107,16 @@ class _ProfilePageState extends State<ProfilePage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const SizedBox(height: 8),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: cs.onSurfaceVariant.withOpacity(0.4),
-                  borderRadius: BorderRadius.circular(2),
+              // ✅ SEMANTICS: alça do bottom sheet decorativa
+              Semantics(
+                excludeSemantics: true,
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: cs.onSurfaceVariant.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
@@ -123,14 +127,18 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
               ),
               const SizedBox(height: 16),
+              // ✅ SEMANTICS: ícone decorativo nos ListTiles — title/subtitle já descrevem
               ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: cs.primary.withOpacity(0.12),
-                    shape: BoxShape.circle,
+                leading: Semantics(
+                  excludeSemantics: true,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: cs.primary.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.camera_alt_outlined, color: cs.primary),
                   ),
-                  child: Icon(Icons.camera_alt_outlined, color: cs.primary),
                 ),
                 title: const Text('Tirar nova foto (Câmera)'),
                 subtitle: const Text('Use a câmera do seu dispositivo'),
@@ -140,14 +148,17 @@ class _ProfilePageState extends State<ProfilePage> {
                 },
               ),
               ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: cs.secondary.withOpacity(0.12),
-                    shape: BoxShape.circle,
+                leading: Semantics(
+                  excludeSemantics: true,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: cs.secondary.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child:
+                        Icon(Icons.photo_library_outlined, color: cs.secondary),
                   ),
-                  child:
-                      Icon(Icons.photo_library_outlined, color: cs.secondary),
                 ),
                 title: const Text('Escolher da galeria'),
                 subtitle: const Text('Selecione uma imagem salva'),
@@ -158,13 +169,17 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               if (_hasCustomAvatar)
                 ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.12),
-                      shape: BoxShape.circle,
+                  leading: Semantics(
+                    excludeSemantics: true,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child:
+                          const Icon(Icons.delete_outline, color: Colors.red),
                     ),
-                    child: const Icon(Icons.delete_outline, color: Colors.red),
                   ),
                   title: const Text('Remover foto'),
                   subtitle: const Text('Voltar para o avatar padrão'),
@@ -236,7 +251,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Nao foi possivel salvar a foto de perfil.'),
+            content: Text('Não foi possível salvar a foto de perfil.'),
             backgroundColor: Colors.red,
           ),
         );
@@ -253,14 +268,12 @@ class _ProfilePageState extends State<ProfilePage> {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Choose which image bytes to display (preview)
     ImageProvider? avatarImage;
     Widget? initialsFallback;
 
     if (_tempSelectedBytes != null) {
       avatarImage = MemoryImage(_tempSelectedBytes!);
     } else if (_removeAvatar) {
-      // The user removed the image in the current session edit
       avatarImage = NetworkImage(
         '${ApiClient.instance.baseUrl}/media/profiles/default.jpg',
       );
@@ -270,6 +283,15 @@ class _ProfilePageState extends State<ProfilePage> {
     } else {
       initialsFallback = _buildInitialsPlaceholder(cs);
     }
+
+    // ✅ label dinâmico do avatar conforme estado
+    final avatarSemanticLabel = _tempSelectedBytes != null
+        ? 'Foto de perfil: nova foto selecionada. Toque para alterar'
+        : _removeAvatar
+            ? 'Foto de perfil: será removida ao salvar. Toque para alterar'
+            : _hasCustomAvatar
+                ? 'Foto de perfil de ${widget.user.name}. Toque para alterar'
+                : 'Foto de perfil: iniciais ${widget.user.name}. Toque para adicionar foto';
 
     return Scaffold(
       appBar: AppBar(
@@ -286,47 +308,58 @@ class _ProfilePageState extends State<ProfilePage> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   const SizedBox(height: 12),
-                  // Avatar stack with edit button
                   Center(
                     child: Stack(
                       alignment: Alignment.bottomRight,
                       children: [
-                        Hero(
-                          tag: 'profile_avatar',
-                          child: Container(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.15),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
+                        // ✅ SEMANTICS: avatar com label descritivo e ação de editar
+                        Semantics(
+                          label: avatarSemanticLabel,
+                          button: true,
+                          child: Hero(
+                            tag: 'profile_avatar',
+                            child: GestureDetector(
+                              onTap: _showImagePickerOptions,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.15),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                            child: CircleAvatar(
-                              radius: 65,
-                              backgroundColor: cs.primary.withOpacity(0.12),
-                              backgroundImage: avatarImage,
-                              child:
-                                  avatarImage == null ? initialsFallback : null,
+                                child: CircleAvatar(
+                                  radius: 65,
+                                  backgroundColor:
+                                      cs.primary.withOpacity(0.12),
+                                  backgroundImage: avatarImage,
+                                  child: avatarImage == null
+                                      ? initialsFallback
+                                      : null,
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                        // Circular edit button
-                        Material(
-                          color: cs.primary,
-                          shape: const CircleBorder(),
-                          elevation: 4,
-                          child: InkWell(
-                            customBorder: const CircleBorder(),
-                            onTap: _showImagePickerOptions,
-                            child: const Padding(
-                              padding: EdgeInsets.all(10.0),
-                              child: Icon(
-                                Icons.camera_alt,
-                                color: Colors.white,
-                                size: 22,
+                        // ✅ SEMANTICS: botão de câmera sobreposto é decorativo — avatar já tem a ação
+                        ExcludeSemantics(
+                          child: Material(
+                            color: cs.primary,
+                            shape: const CircleBorder(),
+                            elevation: 4,
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: _showImagePickerOptions,
+                              child: const Padding(
+                                padding: EdgeInsets.all(10.0),
+                                child: Icon(
+                                  Icons.camera_alt,
+                                  color: Colors.white,
+                                  size: 22,
+                                ),
                               ),
                             ),
                           ),
@@ -335,18 +368,22 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  TextButton.icon(
-                    onPressed: _showImagePickerOptions,
-                    icon: const Icon(Icons.photo_camera),
-                    label: const Text('Alterar Foto de Perfil'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: cs.primary,
-                      textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                  // ✅ SEMANTICS: botão textual com label explícito
+                  Semantics(
+                    label: 'Alterar foto de perfil',
+                    button: true,
+                    child: TextButton.icon(
+                      onPressed: _showImagePickerOptions,
+                      icon: const Icon(Icons.photo_camera),
+                      label: const Text('Alterar Foto de Perfil'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: cs.primary,
+                        textStyle:
+                            const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 32),
-
-                  // Profile info inputs
                   Card(
                     elevation: 0,
                     shape: RoundedRectangleBorder(
@@ -372,7 +409,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                           ),
                           const SizedBox(height: 20),
-                          // Name input
+                          // ✅ labelText já serve como label acessível
                           TextFormField(
                             controller: _nameController,
                             textInputAction: TextInputAction.done,
@@ -389,15 +426,21 @@ class _ProfilePageState extends State<ProfilePage> {
                             },
                           ),
                           const SizedBox(height: 16),
-                          // Email input (read-only)
-                          TextFormField(
-                            initialValue: widget.user.email ?? 'Sem e-mail',
+                          // ✅ SEMANTICS: campo desabilitado com hint que explica o motivo
+                          Semantics(
+                            label:
+                                'E-mail: ${widget.user.email ?? 'Sem e-mail'}. Campo não editável',
                             readOnly: true,
-                            enabled: false,
-                            decoration: const InputDecoration(
-                              labelText: 'E-mail (Não editável)',
-                              prefixIcon: Icon(Icons.mail_outline),
-                              border: OutlineInputBorder(),
+                            child: TextFormField(
+                              initialValue:
+                                  widget.user.email ?? 'Sem e-mail',
+                              readOnly: true,
+                              enabled: false,
+                              decoration: const InputDecoration(
+                                labelText: 'E-mail (Não editável)',
+                                prefixIcon: Icon(Icons.mail_outline),
+                                border: OutlineInputBorder(),
+                              ),
                             ),
                           ),
                         ],
@@ -405,32 +448,37 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                   const SizedBox(height: 40),
-
-                  // Save Button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: FilledButton.icon(
-                      onPressed: _isLoading ? null : _saveProfile,
-                      icon: _isLoading
-                          ? const SizedBox.square(
-                              dimension: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.save),
-                      label: const Text(
-                        'Salvar Alterações',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                  // ✅ SEMANTICS: botão salvar com estado de loading anunciado
+                  Semantics(
+                    label: _isLoading
+                        ? 'Salvando alterações, aguarde'
+                        : 'Salvar alterações do perfil',
+                    button: true,
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: FilledButton.icon(
+                        onPressed: _isLoading ? null : _saveProfile,
+                        icon: _isLoading
+                            ? const SizedBox.square(
+                                dimension: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.save),
+                        label: const Text(
+                          'Salvar Alterações',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                      style: FilledButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                        style: FilledButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),

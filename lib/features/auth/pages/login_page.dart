@@ -92,27 +92,42 @@ class _LoginPageState extends State<LoginPage> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Icon(Icons.sports_soccer, size: 72, color: cs.primary),
-                        const SizedBox(height: 20),
-                        Text(
-                          'Bengala FC',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineLarge
-                              ?.copyWith(
-                                fontWeight: FontWeight.w900,
-                                color: cs.primary,
-                              ),
+                        // ✅ SEMANTICS: ícone decorativo
+                        Semantics(
+                          excludeSemantics: true,
+                          child: Icon(
+                            Icons.sports_soccer,
+                            size: 72,
+                            color: cs.primary,
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Entre com sua conta Bengala FC',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: cs.onSurfaceVariant,
-                            fontWeight: FontWeight.w500,
+                        const SizedBox(height: 20),
+                        // ✅ SEMANTICS: título + subtítulo agrupados como cabeçalho
+                        MergeSemantics(
+                          child: Column(
+                            children: [
+                              Text(
+                                'Bengala FC',
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .headlineLarge
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w900,
+                                      color: cs.primary,
+                                    ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Entre com sua conta Bengala FC',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: cs.onSurfaceVariant,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(height: 32),
@@ -124,6 +139,7 @@ class _LoginPageState extends State<LoginPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
+                                // ✅ labelText já serve como label acessível
                                 TextFormField(
                                   controller: _emailController,
                                   keyboardType: TextInputType.emailAddress,
@@ -145,6 +161,7 @@ class _LoginPageState extends State<LoginPage> {
                                   },
                                 ),
                                 const SizedBox(height: 12),
+                                // ✅ tooltip no IconButton já serve como label
                                 TextFormField(
                                   controller: _passwordController,
                                   obscureText: _obscurePassword,
@@ -179,32 +196,43 @@ class _LoginPageState extends State<LoginPage> {
                                   },
                                 ),
                                 const SizedBox(height: 20),
-                                FilledButton.icon(
-                                  style: FilledButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
+                                // ✅ SEMANTICS: label explícito com estado de loading
+                                Semantics(
+                                  label: 'Entrar na conta Bengala FC',
+                                  button: true,
+                                  child: FilledButton.icon(
+                                    style: FilledButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 16,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(12),
+                                      ),
                                     ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                  onPressed: _submit,
-                                  icon: const Icon(Icons.login),
-                                  label: const Text(
-                                    'Entrar',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
+                                    onPressed: _submit,
+                                    icon: const Icon(Icons.login),
+                                    label: const Text(
+                                      'Entrar',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                   ),
                                 ),
                                 const SizedBox(height: 12),
-                                TextButton(
-                                  onPressed: _openRegisterPage,
-                                  child: const Text(
-                                    'Não tenho conta',
-                                    style:
-                                        TextStyle(fontWeight: FontWeight.bold),
+                                // ✅ SEMANTICS: label descritivo para o botão de registro
+                                Semantics(
+                                  label: 'Criar nova conta',
+                                  button: true,
+                                  child: TextButton(
+                                    onPressed: _openRegisterPage,
+                                    child: const Text(
+                                      'Não tenho conta',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -228,16 +256,22 @@ class _AuthLoadingMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Column(
-        children: [
-          CircularProgressIndicator(),
-          SizedBox(height: 16),
-          Text(
-            'Conectando com o servidor...',
-            style: TextStyle(fontWeight: FontWeight.w500),
-          ),
-        ],
+    // ✅ SEMANTICS: anuncia loading para o TalkBack via liveRegion
+    return Semantics(
+      liveRegion: true,
+      label: 'Conectando com o servidor, aguarde',
+      child: const Center(
+        child: Column(
+          children: [
+            // ✅ SEMANTICS: indicador de progresso decorativo — texto já anuncia
+            ExcludeSemantics(child: CircularProgressIndicator()),
+            SizedBox(height: 16),
+            Text(
+              'Conectando com o servidor...',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
       ),
     );
   }

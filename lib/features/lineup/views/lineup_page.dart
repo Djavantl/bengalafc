@@ -49,7 +49,12 @@ class _LineupView extends StatelessWidget {
                       _BackHeader(title: 'Escalação', onBack: onBack),
                       const SizedBox(height: 12),
                       if (viewModel.isLoading) ...[
-                        const LinearProgressIndicator(),
+                        // ✅ SEMANTICS: Anuncia loading para TalkBack
+                        Semantics(
+                          liveRegion: true,
+                          label: 'Carregando escalação',
+                          child: const LinearProgressIndicator(),
+                        ),
                         const SizedBox(height: 12),
                       ],
                       _LineupHeader(viewModel: viewModel),
@@ -96,6 +101,7 @@ class _BackHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
+        // ✅ tooltip já serve como label para o TalkBack
         IconButton(
           tooltip: 'Voltar',
           icon: const Icon(Icons.arrow_back),
@@ -281,12 +287,16 @@ class _LineupHeader extends StatelessWidget {
           ),
           if (viewModel.errorMessage != null) ...[
             const SizedBox(height: 12),
-            Text(
-              viewModel.errorMessage!,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: cs.error,
-                    fontWeight: FontWeight.w600,
-                  ),
+            // ✅ SEMANTICS: Anuncia erros automaticamente
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                viewModel.errorMessage!,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: cs.error,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
             ),
           ],
           const SizedBox(height: 14),
@@ -346,38 +356,45 @@ class _MetricChip extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final color = isWarning ? cs.error : cs.primary;
 
-    return Container(
-      constraints: const BoxConstraints(minWidth: 128),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.09),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.24)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                    ),
-              ),
-              Text(
-                value,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: isWarning ? cs.error : cs.onSurface,
-                    ),
-              ),
-            ],
-          ),
-        ],
+    // ✅ SEMANTICS: MergeSemantics agrupa ícone + label + value em uma leitura só
+    return MergeSemantics(
+      child: Container(
+        constraints: const BoxConstraints(minWidth: 128),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.09),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withOpacity(0.24)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ✅ SEMANTICS: Ícone decorativo, já descrito pelo label ao lado
+            Semantics(
+              excludeSemantics: true,
+              child: Icon(icon, size: 18, color: color),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                ),
+                Text(
+                  value,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: isWarning ? cs.error : cs.onSurface,
+                      ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -401,24 +418,31 @@ class _PitchCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       child: AspectRatio(
         aspectRatio: 0.72,
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppColors.primaryLight,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.white.withOpacity(0.65), width: 2),
-          ),
-          child: Stack(
-            children: [
-              const _PitchLines(),
-              ...viewModel.slots.map(
-                (slot) => _PositionedSlot(
-                  slot: slot,
-                  formation: viewModel.selectedFormation,
-                  isCaptain: slot.player?.id == viewModel.captainPlayerId,
-                  onTap: () => _showPlayerPicker(context, viewModel, slot),
+        child: Semantics(
+          label: 'Campo de escalação',
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.primaryLight,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.white.withOpacity(0.65), width: 2),
+            ),
+            child: Stack(
+              children: [
+                // ✅ SEMANTICS: Linhas do campo são puramente decorativas
+                Semantics(
+                  excludeSemantics: true,
+                  child: const _PitchLines(),
                 ),
-              ),
-            ],
+                ...viewModel.slots.map(
+                  (slot) => _PositionedSlot(
+                    slot: slot,
+                    formation: viewModel.selectedFormation,
+                    isCaptain: slot.player?.id == viewModel.captainPlayerId,
+                    onTap: () => _showPlayerPicker(context, viewModel, slot),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -529,19 +553,10 @@ class _PlayerPickerSheetState extends State<_PlayerPickerSheet> {
 
   String _normalize(String value) {
     const accents = {
-      'á': 'a',
-      'à': 'a',
-      'â': 'a',
-      'ã': 'a',
-      'é': 'e',
-      'ê': 'e',
-      'í': 'i',
-      'ó': 'o',
-      'ô': 'o',
-      'õ': 'o',
-      'ú': 'u',
-      'ü': 'u',
-      'ç': 'c',
+      'á': 'a', 'à': 'a', 'â': 'a', 'ã': 'a',
+      'é': 'e', 'ê': 'e', 'í': 'i',
+      'ó': 'o', 'ô': 'o', 'õ': 'o',
+      'ú': 'u', 'ü': 'u', 'ç': 'c',
     };
 
     return value
@@ -603,10 +618,14 @@ class _PlayerPickerSheetState extends State<_PlayerPickerSheet> {
                 maxHeight: MediaQuery.sizeOf(context).height * 0.54,
               ),
               child: widget.isLoading && filteredOptions.isEmpty
-                  ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24.0),
-                        child: CircularProgressIndicator(),
+                  ? Semantics(
+                      liveRegion: true,
+                      label: 'Carregando jogadores',
+                      child: const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24.0),
+                          child: CircularProgressIndicator(),
+                        ),
                       ),
                     )
                   : filteredOptions.isEmpty
@@ -620,17 +639,26 @@ class _PlayerPickerSheetState extends State<_PlayerPickerSheet> {
                             final isSelected =
                                 player.id == widget.slot.player?.id;
 
-                            return ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: _PlayerAvatar(player: player),
-                              title: Text(player.name),
-                              subtitle: Text(
-                                '${player.nationalTeam} • ${player.averagePoints.toStringAsFixed(1)} pts • ${player.selectedPercentage.toStringAsFixed(0)}%',
+                            // ✅ SEMANTICS: Leitura completa do jogador em uma frase
+                            return Semantics(
+                              label:
+                                  '${player.name}, ${player.nationalTeam}, média ${player.averagePoints.toStringAsFixed(1)} pontos, escalado por ${player.selectedPercentage.toStringAsFixed(0)} por cento dos times${isSelected ? ", selecionado" : ""}',
+                              button: true,
+                              child: ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: Semantics(
+                                  excludeSemantics: true,
+                                  child: _PlayerAvatar(player: player),
+                                ),
+                                title: Text(player.name),
+                                subtitle: Text(
+                                  '${player.nationalTeam} • ${player.averagePoints.toStringAsFixed(1)} pts • ${player.selectedPercentage.toStringAsFixed(0)}%',
+                                ),
+                                trailing: isSelected
+                                    ? const Icon(Icons.check_circle)
+                                    : const Icon(Icons.add_circle_outline),
+                                onTap: () => widget.onSelect(player),
                               ),
-                              trailing: isSelected
-                                  ? const Icon(Icons.check_circle)
-                                  : const Icon(Icons.add_circle_outline),
-                              onTap: () => widget.onSelect(player),
                             );
                           },
                         ),
@@ -828,93 +856,113 @@ class _PlayerSlotButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final player = slot.player;
 
-    return Tooltip(
-      message: player == null ? 'Escolher jogador' : 'Trocar ${player.name}',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: onTap,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                      border: Border.all(color: AppColors.accent, width: 2),
-                      image: (player != null &&
-                              player.photoUrl != null &&
-                              player.photoUrl!.isNotEmpty)
-                          ? DecorationImage(
-                              image: NetworkImage(player.photoUrl!),
-                              fit: BoxFit.cover,
-                            )
-                          : null,
-                    ),
-                    child: (player != null &&
-                            player.photoUrl != null &&
-                            player.photoUrl!.isNotEmpty)
-                        ? null
-                        : Icon(
-                            player == null
-                                ? Icons.add
-                                : Icons.sports_soccer_outlined,
-                            color: AppColors.primaryLight,
-                            size: 20,
-                          ),
-                  ),
-                  if (isCaptain)
-                    Positioned(
-                      right: -4,
-                      top: -5,
+    // ✅ SEMANTICS: Descreve posição, jogador e ação esperada
+    return Semantics(
+      label: player == null
+          ? 'Posição ${slot.label}: vazia. Toque para escolher jogador'
+          : 'Posição ${slot.label}: ${player.name}${isCaptain ? ", capitão" : ""}. Toque para trocar',
+      button: true,
+      child: Tooltip(
+        message: player == null ? 'Escolher jogador' : 'Trocar ${player.name}',
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: onTap,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    // ✅ SEMANTICS: Foto/ícone decorativos, já descritos pelo label acima
+                    Semantics(
+                      excludeSemantics: true,
                       child: Container(
-                        width: 20,
-                        height: 20,
-                        alignment: Alignment.center,
-                        decoration: const BoxDecoration(
-                          color: AppColors.accent,
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
                           shape: BoxShape.circle,
+                          color: Colors.white,
+                          border: Border.all(color: AppColors.accent, width: 2),
+                          image: (player != null &&
+                                  player.photoUrl != null &&
+                                  player.photoUrl!.isNotEmpty)
+                              ? DecorationImage(
+                                  image: NetworkImage(player.photoUrl!),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
                         ),
-                        child: const Text(
-                          'C',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF1A221A),
+                        child: (player != null &&
+                                player.photoUrl != null &&
+                                player.photoUrl!.isNotEmpty)
+                            ? null
+                            : Icon(
+                                player == null
+                                    ? Icons.add
+                                    : Icons.sports_soccer_outlined,
+                                color: AppColors.primaryLight,
+                                size: 20,
+                              ),
+                      ),
+                    ),
+                    if (isCaptain)
+                      Positioned(
+                        right: -4,
+                        top: -5,
+                        // ✅ SEMANTICS: Badge "C" decorativo, capitão já no label
+                        child: Semantics(
+                          excludeSemantics: true,
+                          child: Container(
+                            width: 20,
+                            height: 20,
+                            alignment: Alignment.center,
+                            decoration: const BoxDecoration(
+                              color: AppColors.accent,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Text(
+                              'C',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF1A221A),
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              Container(
-                width: 96,
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.48),
-                  borderRadius: BorderRadius.circular(6),
+                  ],
                 ),
-                child: Text(
-                  player?.name ?? slot.label,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    height: 1.1,
+                const SizedBox(height: 2),
+                // ✅ SEMANTICS: Nome embaixo do slot é decorativo, já no label
+                Semantics(
+                  excludeSemantics: true,
+                  child: Container(
+                    width: 96,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.48),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      player?.name ?? slot.label,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        height: 1.1,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -987,52 +1035,67 @@ class _SelectedPlayerTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Material(
-      color: isCaptain
-          ? AppColors.accent.withOpacity(0.16)
-          : cs.surfaceContainerHighest.withOpacity(0.64),
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
+    // ✅ SEMANTICS: Descreve jogador + posição + ação de capitão
+    return Semantics(
+      label:
+          '${player.name}, ${player.position}, ${player.nationalTeam}, escalado por ${player.selectedPercentage.toStringAsFixed(0)} por cento dos times'
+          '${isCaptain ? ", capitão atual" : ""}. Toque para ${isCaptain ? "remover capitania" : "definir como capitão"}',
+      button: true,
+      child: Material(
+        color: isCaptain
+            ? AppColors.accent.withOpacity(0.16)
+            : cs.surfaceContainerHighest.withOpacity(0.64),
         borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-          child: Row(
-            children: [
-              _PlayerAvatar(player: player),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      player.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${player.position} • ${player.nationalTeam} • ${player.selectedPercentage.toStringAsFixed(0)}%',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: cs.onSurfaceVariant,
-                          ),
-                    ),
-                  ],
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            child: Row(
+              children: [
+                Semantics(
+                  excludeSemantics: true,
+                  child: _PlayerAvatar(player: player),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Icon(
-                    isCaptain ? Icons.star : Icons.star_border,
-                    color: isCaptain ? AppColors.accent : cs.onSurfaceVariant,
-                    size: 18,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        player.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${player.position} • ${player.nationalTeam} • ${player.selectedPercentage.toStringAsFixed(0)}%',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(width: 8),
+                // ✅ SEMANTICS: Estrela decorativa, capitania já no label
+                Semantics(
+                  excludeSemantics: true,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Icon(
+                        isCaptain ? Icons.star : Icons.star_border,
+                        color:
+                            isCaptain ? AppColors.accent : cs.onSurfaceVariant,
+                        size: 18,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1049,20 +1112,25 @@ class _PlayerAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasPhoto = player.photoUrl != null && player.photoUrl!.isNotEmpty;
 
-    return CircleAvatar(
-      radius: 18,
-      backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.12),
-      backgroundImage: hasPhoto ? NetworkImage(player.photoUrl!) : null,
-      child: hasPhoto
-          ? null
-          : Text(
-              player.position,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w900,
-                color: Theme.of(context).colorScheme.primary,
+    // ✅ SEMANTICS: Avatar sempre decorativo — contexto vem do widget pai
+    return Semantics(
+      excludeSemantics: true,
+      child: CircleAvatar(
+        radius: 18,
+        backgroundColor:
+            Theme.of(context).colorScheme.primary.withOpacity(0.12),
+        backgroundImage: hasPhoto ? NetworkImage(player.photoUrl!) : null,
+        child: hasPhoto
+            ? null
+            : Text(
+                player.position,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
               ),
-            ),
+      ),
     );
   }
 }

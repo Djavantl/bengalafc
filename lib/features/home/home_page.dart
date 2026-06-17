@@ -167,49 +167,59 @@ class _HomePageState extends State<HomePage> {
 
         return Scaffold(
           appBar: AppBar(
-            title: RichText(
-              text: TextSpan(
-                style: Theme.of(context).textTheme.titleLarge,
-                children: [
-                  const TextSpan(text: 'Bengala'),
-                  const TextSpan(
-                    text: 'FC',
-                    style: TextStyle(
-                      color: AppColors.accent,
-                      fontWeight: FontWeight.w800,
+            // ✅ SEMANTICS: título do app lido como texto único
+            title: Semantics(
+              label: 'Bengala FC Fantasy',
+              child: RichText(
+                text: TextSpan(
+                  style: Theme.of(context).textTheme.titleLarge,
+                  children: [
+                    const TextSpan(text: 'Bengala'),
+                    const TextSpan(
+                      text: 'FC',
+                      style: TextStyle(
+                        color: AppColors.accent,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
-                  ),
-                  TextSpan(
-                    text: ' Fantasy',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
+                    TextSpan(
+                      text: ' Fantasy',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             actions: [
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: Center(
-                  child: UserAvatar(
-                    user: widget.user,
-                    radius: 18,
-                    onTap: () async {
-                      final updated = await Navigator.of(context).push<bool>(
-                        MaterialPageRoute(
-                          builder: (_) => ProfilePage(user: widget.user),
-                        ),
-                      );
-                      if (updated == true && mounted) {
-                        setState(() {});
-                      }
-                    },
+                  // ✅ SEMANTICS: avatar do usuário com label descritivo
+                  child: Semantics(
+                    label: 'Perfil de ${widget.user.name}. Toque para editar',
+                    button: true,
+                    child: UserAvatar(
+                      user: widget.user,
+                      radius: 18,
+                      onTap: () async {
+                        final updated = await Navigator.of(context).push<bool>(
+                          MaterialPageRoute(
+                            builder: (_) => ProfilePage(user: widget.user),
+                          ),
+                        );
+                        if (updated == true && mounted) {
+                          setState(() {});
+                        }
+                      },
+                    ),
                   ),
                 ),
               ),
+              // ✅ tooltip já serve como label para os IconButtons
               IconButton(
                 tooltip: isDark ? 'Modo claro' : 'Modo escuro',
                 icon: Icon(
@@ -239,6 +249,7 @@ class _HomePageState extends State<HomePage> {
               setState(() => _selectedIndex = index);
               if (index == 0) _reloadHomeData();
             },
+            // ✅ NavigationDestination já tem label acessível nativo
             destinations: const [
               NavigationDestination(
                 icon: Icon(Icons.home_outlined),
@@ -372,8 +383,6 @@ class _FixtureSummary {
   }
 }
 
-// ─── Home body extraído para widget separado ─────────────────────────────────
-
 class _HomeBody extends StatelessWidget {
   const _HomeBody({
     this.userName,
@@ -408,7 +417,7 @@ class _HomeBody extends StatelessWidget {
                   children: [
                     if (userName != null) ...[
                       Text(
-                        'Ola, $userName',
+                        'Olá, $userName',
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
@@ -526,7 +535,11 @@ class _ScoreCard extends StatelessWidget {
                       _ScoreMetric(metric: metrics[i], fontSize: 30),
                       if (i < metrics.length - 1) ...[
                         const SizedBox(height: 14),
-                        Container(height: 1, color: Colors.white24),
+                        // ✅ SEMANTICS: divisor decorativo
+                        Semantics(
+                          excludeSemantics: true,
+                          child: Container(height: 1, color: Colors.white24),
+                        ),
                         const SizedBox(height: 14),
                       ],
                     ],
@@ -539,7 +552,12 @@ class _ScoreCard extends StatelessWidget {
                   for (var i = 0; i < metrics.length; i++) ...[
                     Expanded(child: _ScoreMetric(metric: metrics[i])),
                     if (i < metrics.length - 1)
-                      Container(width: 1, height: 48, color: Colors.white24),
+                      // ✅ SEMANTICS: divisor vertical decorativo
+                      Semantics(
+                        excludeSemantics: true,
+                        child: Container(
+                            width: 1, height: 48, color: Colors.white24),
+                      ),
                   ],
                 ],
               );
@@ -566,34 +584,37 @@ class _ScoreMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            metric.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.white.withValues(alpha: 0.8),
-              fontWeight: FontWeight.w500,
+    // ✅ SEMANTICS: label + valor agrupados como uma frase só
+    return MergeSemantics(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              metric.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.white.withValues(alpha: 0.8),
+                fontWeight: FontWeight.w500,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            metric.value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: fontSize,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-              height: 1,
+            const SizedBox(height: 4),
+            Text(
+              metric.value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+                height: 1,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -668,6 +689,12 @@ class _MyTeamCard extends StatelessWidget {
                                 '${summary.lineupCaptainName == null ? '' : ' • Cap: ${summary.lineupCaptainName}'}'
                             : 'Monte seu time para pontuar nesta rodada';
 
+        final buttonLabel = competitionFinished
+            ? 'Encerrado'
+            : hasLineup
+                ? 'Editar'
+                : 'Montar';
+
         return Container(
           decoration: BoxDecoration(
             color: cardBg,
@@ -675,58 +702,67 @@ class _MyTeamCard extends StatelessWidget {
             border: Border(left: BorderSide(color: cs.primary, width: 4)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-          child: Row(
-            children: [
-              Icon(Icons.group_outlined, size: 36, color: cs.primary),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: cs.onSurface,
+          // ✅ SEMANTICS: card inteiro com contexto completo para TalkBack
+          child: MergeSemantics(
+            child: Row(
+              children: [
+                // ✅ SEMANTICS: ícone decorativo
+                Semantics(
+                  excludeSemantics: true,
+                  child: Icon(Icons.group_outlined, size: 36, color: cs.primary),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: cs.onSurface,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: cs.onSurfaceVariant,
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: cs.onSurfaceVariant,
+                        ),
                       ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // ✅ SEMANTICS: botão com label descritivo da ação
+                Semantics(
+                  label: '$buttonLabel time. $title',
+                  button: true,
+                  excludeSemantics: true,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                  ],
+                    onPressed: hasError || !hasStage || competitionFinished
+                        ? null
+                        : onBuildTeam,
+                    child: Text(
+                      buttonLabel,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                onPressed: hasError || !hasStage || competitionFinished
-                    ? null
-                    : onBuildTeam,
-                child: Text(
-                  competitionFinished
-                      ? 'Encerrado'
-                      : hasLineup
-                          ? 'Editar'
-                          : 'Montar',
-                  style: const TextStyle(fontSize: 13),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -794,34 +830,42 @@ class _RoundCard extends StatelessWidget {
             border: Border(left: BorderSide(color: cs.secondary, width: 4)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-          child: Row(
-            children: [
-              Icon(Icons.sports_soccer_outlined, size: 36, color: cs.secondary),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: cs.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+          // ✅ SEMANTICS: título + subtítulo agrupados
+          child: MergeSemantics(
+            child: Row(
+              children: [
+                // ✅ SEMANTICS: ícone decorativo
+                Semantics(
+                  excludeSemantics: true,
+                  child: Icon(Icons.sports_soccer_outlined,
+                      size: 36, color: cs.secondary),
                 ),
-              ),
-            ],
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -843,11 +887,16 @@ class _CurrentFixturesSection extends StatelessWidget {
         final isLoading = snapshot.connectionState == ConnectionState.waiting;
 
         if (isLoading) {
-          return const _FixturesCard(
+          return _FixturesCard(
             title: 'Partidas da fase atual',
-            child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Center(child: CircularProgressIndicator()),
+            // ✅ SEMANTICS: loading de partidas anunciado
+            child: Semantics(
+              liveRegion: true,
+              label: 'Carregando partidas',
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(child: CircularProgressIndicator()),
+              ),
             ),
           );
         }
@@ -938,47 +987,53 @@ class _FixtureTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              fixture.homeTeam,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w700),
+
+    // ✅ SEMANTICS: lê a partida completa em uma frase natural
+    return Semantics(
+      label:
+          '${fixture.homeTeam} ${fixture.scoreText} ${fixture.awayTeam}, ${fixture.kickoffText}',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                fixture.homeTeam,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Column(
-              children: [
-                Text(
-                  fixture.scoreText,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                ),
-                Text(
-                  fixture.kickoffText,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                ),
-              ],
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Column(
+                children: [
+                  Text(
+                    fixture.scoreText,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                  ),
+                  Text(
+                    fixture.kickoffText,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Expanded(
-            child: Text(
-              fixture.awayTeam,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.end,
-              style: const TextStyle(fontWeight: FontWeight.w700),
+            Expanded(
+              child: Text(
+                fixture.awayTeam,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

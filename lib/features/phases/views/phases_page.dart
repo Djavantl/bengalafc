@@ -79,10 +79,15 @@ class _PhasesPageState extends State<PhasesPage> {
           ];
 
           if (snapshot.connectionState == ConnectionState.waiting) {
+            // ✅ SEMANTICS: anuncia loading de fases
             children.add(
-              const SizedBox(
-                height: 320,
-                child: Center(child: CircularProgressIndicator()),
+              Semantics(
+                liveRegion: true,
+                label: 'Carregando fases',
+                child: const SizedBox(
+                  height: 320,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
               ),
             );
           } else if (snapshot.hasError) {
@@ -145,6 +150,7 @@ class _BackHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
+        // ✅ tooltip já serve como label acessível
         IconButton(
           tooltip: 'Voltar',
           icon: const Icon(Icons.arrow_back),
@@ -187,8 +193,10 @@ class _PhaseTile extends StatefulWidget {
 
 class _PhaseTileState extends State<_PhaseTile> {
   Future<List<_FixtureItem>>? _fixturesFuture;
+  bool _isExpanded = false;
 
   void _handleExpansionChanged(bool expanded) {
+    _isExpanded = expanded;
     if (!expanded || _fixturesFuture != null) return;
     setState(() {
       _fixturesFuture = widget.loadFixtures();
@@ -199,6 +207,10 @@ class _PhaseTileState extends State<_PhaseTile> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
+    final competitionLabel = widget.phase.competitionName != null
+        ? ', ${widget.phase.competitionName}'
+        : '';
+
     return Card(
       elevation: 0,
       color: cs.surfaceContainerHighest,
@@ -207,64 +219,82 @@ class _PhaseTileState extends State<_PhaseTile> {
         side: BorderSide(color: cs.outlineVariant),
       ),
       clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        onExpansionChanged: _handleExpansionChanged,
-        leading: CircleAvatar(
-          backgroundColor: cs.primaryContainer,
-          foregroundColor: cs.onPrimaryContainer,
-          child: Text(widget.phase.orderText),
-        ),
-        title: Text(
-          widget.phase.name,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-        subtitle: widget.phase.competitionName == null
-            ? null
-            : Text(
-                widget.phase.competitionName!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-        children: [
-          FutureBuilder<List<_FixtureItem>>(
-            future: _fixturesFuture,
-            builder: (context, snapshot) {
-              if (_fixturesFuture == null) {
-                return const SizedBox.shrink();
-              }
-
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: LinearProgressIndicator(),
-                );
-              }
-
-              if (snapshot.hasError) {
-                return const _InlineMessage(
-                  icon: Icons.error_outline,
-                  text: 'Não foi possível carregar os jogos desta fase.',
-                );
-              }
-
-              final fixtures = snapshot.data ?? [];
-              if (fixtures.isEmpty) {
-                return const _InlineMessage(
-                  icon: Icons.sports_soccer_outlined,
-                  text: 'Nenhum jogo cadastrado nesta fase.',
-                );
-              }
-
-              return Column(
-                children: fixtures
-                    .map((fixture) => _FixtureRow(fixture: fixture))
-                    .toList(growable: false),
-              );
-            },
+      // ✅ SEMANTICS: ExpansionTile com label descritivo do estado
+      child: Semantics(
+        label:
+            'Fase ${widget.phase.orderText}, ${widget.phase.name}$competitionLabel. '
+            '${_isExpanded ? 'Expandido, toque para recolher' : 'Recolhido, toque para expandir'}',
+        child: ExpansionTile(
+          onExpansionChanged: _handleExpansionChanged,
+          // ✅ SEMANTICS: CircleAvatar com número é decorativo — já incluso no label
+          leading: ExcludeSemantics(
+            child: CircleAvatar(
+              backgroundColor: cs.primaryContainer,
+              foregroundColor: cs.onPrimaryContainer,
+              child: Text(widget.phase.orderText),
+            ),
           ),
-        ],
+          title: ExcludeSemantics(
+            child: Text(
+              widget.phase.name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          subtitle: widget.phase.competitionName == null
+              ? null
+              : ExcludeSemantics(
+                  child: Text(
+                    widget.phase.competitionName!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+          children: [
+            FutureBuilder<List<_FixtureItem>>(
+              future: _fixturesFuture,
+              builder: (context, snapshot) {
+                if (_fixturesFuture == null) {
+                  return const SizedBox.shrink();
+                }
+
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  // ✅ SEMANTICS: anuncia loading dos jogos da fase
+                  return Semantics(
+                    liveRegion: true,
+                    label: 'Carregando jogos da fase ${widget.phase.name}',
+                    child: const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: LinearProgressIndicator(),
+                    ),
+                  );
+                }
+
+                if (snapshot.hasError) {
+                  return const _InlineMessage(
+                    icon: Icons.error_outline,
+                    text: 'Não foi possível carregar os jogos desta fase.',
+                  );
+                }
+
+                final fixtures = snapshot.data ?? [];
+                if (fixtures.isEmpty) {
+                  return const _InlineMessage(
+                    icon: Icons.sports_soccer_outlined,
+                    text: 'Nenhum jogo cadastrado nesta fase.',
+                  );
+                }
+
+                return Column(
+                  children: fixtures
+                      .map((fixture) => _FixtureRow(fixture: fixture))
+                      .toList(growable: false),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -279,57 +309,70 @@ class _FixtureRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: cs.outlineVariant),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                fixture.homeTeam,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Column(
-                children: [
-                  Text(
-                    fixture.scoreText,
-                    style: TextStyle(
-                      color: cs.primary,
-                      fontWeight: FontWeight.w800,
-                    ),
+    // ✅ SEMANTICS: jogo lido como frase natural
+    return Semantics(
+      label:
+          '${fixture.homeTeam} ${fixture.scoreText} ${fixture.awayTeam}, ${fixture.status}',
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: cs.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: ExcludeSemantics(
+                  child: Text(
+                    fixture.homeTeam,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    fixture.status,
-                    style: TextStyle(
-                      color: cs.onSurfaceVariant,
-                      fontSize: 11,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Column(
+                  children: [
+                    ExcludeSemantics(
+                      child: Text(
+                        fixture.scoreText,
+                        style: TextStyle(
+                          color: cs.primary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                     ),
+                    const SizedBox(height: 2),
+                    ExcludeSemantics(
+                      child: Text(
+                        fixture.status,
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ExcludeSemantics(
+                  child: Text(
+                    fixture.awayTeam,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                ],
+                ),
               ),
-            ),
-            Expanded(
-              child: Text(
-                fixture.awayTeam,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.end,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -355,7 +398,11 @@ class _MessageState extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       children: [
         const SizedBox(height: 96),
-        Icon(icon, size: 44, color: cs.onSurfaceVariant),
+        // ✅ SEMANTICS: ícone decorativo — mensagem descrita pelo texto
+        Semantics(
+          excludeSemantics: true,
+          child: Icon(icon, size: 44, color: cs.onSurfaceVariant),
+        ),
         const SizedBox(height: 16),
         Text(
           title,
@@ -387,19 +434,25 @@ class _InlineMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 2, 16, 16),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: cs.onSurfaceVariant),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(color: cs.onSurfaceVariant),
+    // ✅ SEMANTICS: ícone + texto agrupados, ícone decorativo
+    return MergeSemantics(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 2, 16, 16),
+        child: Row(
+          children: [
+            Semantics(
+              excludeSemantics: true,
+              child: Icon(icon, size: 18, color: cs.onSurfaceVariant),
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(color: cs.onSurfaceVariant),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

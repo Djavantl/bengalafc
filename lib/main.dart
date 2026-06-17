@@ -10,6 +10,8 @@ import 'core/theme/theme_notifier.dart';
 import 'features/auth/auth_gate.dart';
 import 'features/scoring/viewmodels/scoring_notifier.dart';
 import 'firebase_options.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,6 +48,15 @@ class BengalaFCApp extends StatelessWidget {
         builder: (context, mode, _) {
           return MaterialApp(
             title: 'BengalaFC',
+            locale: const Locale('pt', 'BR'),
+            supportedLocales: const [
+              Locale('pt', 'BR'),
+            ],
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
             debugShowCheckedModeBanner: false,
             theme: AppTheme.light,
             darkTheme: AppTheme.dark,
