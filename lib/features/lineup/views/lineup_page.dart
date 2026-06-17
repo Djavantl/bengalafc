@@ -40,40 +40,42 @@ class _LineupView extends StatelessWidget {
                 horizontalPadding,
                 28,
               ),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1100),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _BackHeader(title: 'Escalação', onBack: onBack),
-                    const SizedBox(height: 12),
-                    if (viewModel.isLoading) ...[
-                      const LinearProgressIndicator(),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1100),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _BackHeader(title: 'Escalação', onBack: onBack),
                       const SizedBox(height: 12),
-                    ],
-                    _LineupHeader(viewModel: viewModel),
-                    const SizedBox(height: 16),
-                    if (isWide)
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            flex: 7,
-                            child: _PitchCard(viewModel: viewModel),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            flex: 4,
-                            child: _SelectedPlayersPanel(viewModel: viewModel),
-                          ),
-                        ],
-                      )
-                    else ...[
-                      _PitchCard(viewModel: viewModel),
+                      if (viewModel.isLoading) ...[
+                        const LinearProgressIndicator(),
+                        const SizedBox(height: 12),
+                      ],
+                      _LineupHeader(viewModel: viewModel),
                       const SizedBox(height: 16),
-                      _SelectedPlayersPanel(viewModel: viewModel),
+                      if (isWide)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              flex: 7,
+                              child: _PitchCard(viewModel: viewModel),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              flex: 4,
+                              child: _SelectedPlayersPanel(viewModel: viewModel),
+                            ),
+                          ],
+                        )
+                      else ...[
+                        _PitchCard(viewModel: viewModel),
+                        const SizedBox(height: 16),
+                        _SelectedPlayersPanel(viewModel: viewModel),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             );

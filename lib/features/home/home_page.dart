@@ -400,52 +400,57 @@ class _HomeBody extends StatelessWidget {
               horizontal: isWide ? 32 : 16,
               vertical: 20,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (userName != null) ...[
-                  Text(
-                    'Ola, $userName',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                _ScoreCard(summaryFuture: homeApiSummaryFuture),
-                const SizedBox(height: 24),
-                if (isWide)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: _MyTeamSection(
-                          summaryFuture: homeApiSummaryFuture,
-                          onBuildTeam: onBuildTeam,
-                        ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1000),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (userName != null) ...[
+                      Text(
+                        'Ola, $userName',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _RoundSection(
-                          summaryFuture: homeApiSummaryFuture,
-                        ),
+                      const SizedBox(height: 12),
+                    ],
+                    _ScoreCard(summaryFuture: homeApiSummaryFuture),
+                    const SizedBox(height: 24),
+                    if (isWide)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _MyTeamSection(
+                              summaryFuture: homeApiSummaryFuture,
+                              onBuildTeam: onBuildTeam,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _RoundSection(
+                              summaryFuture: homeApiSummaryFuture,
+                            ),
+                          ),
+                        ],
+                      )
+                    else ...[
+                      _MyTeamSection(
+                        summaryFuture: homeApiSummaryFuture,
+                        onBuildTeam: onBuildTeam,
+                      ),
+                      const SizedBox(height: 16),
+                      _RoundSection(
+                        summaryFuture: homeApiSummaryFuture,
                       ),
                     ],
-                  )
-                else ...[
-                  _MyTeamSection(
-                    summaryFuture: homeApiSummaryFuture,
-                    onBuildTeam: onBuildTeam,
-                  ),
-                  const SizedBox(height: 16),
-                  _RoundSection(
-                    summaryFuture: homeApiSummaryFuture,
-                  ),
-                ],
-                const SizedBox(height: 16),
-                _CurrentFixturesSection(summaryFuture: homeApiSummaryFuture),
-                const SizedBox(height: 32),
-              ],
+                    const SizedBox(height: 16),
+                    _CurrentFixturesSection(summaryFuture: homeApiSummaryFuture),
+                    const SizedBox(height: 32),
+                  ],
+                ),
+              ),
             ),
           ),
         );

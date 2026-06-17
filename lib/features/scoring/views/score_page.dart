@@ -40,15 +40,20 @@ class _ScorePageState extends State<ScorePage> {
   Widget build(BuildContext context) {
     final notifier = context.watch<ScoringNotifier>();
     final cs = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-          child: _BackHeader(title: 'Ranking', onBack: widget.onBack),
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 900),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+              child: _BackHeader(title: 'Ranking', onBack: widget.onBack),
+            ),
+            Expanded(child: _buildBody(notifier, cs)),
+          ],
         ),
-        Expanded(child: _buildBody(notifier, cs)),
-      ],
+      ),
     );
   }
 

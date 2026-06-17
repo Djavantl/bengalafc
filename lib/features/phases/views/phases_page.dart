@@ -119,10 +119,15 @@ class _PhasesPageState extends State<PhasesPage> {
 
           children.add(const SizedBox(height: 22));
 
-          return ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-            children: children,
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 900),
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                children: children,
+              ),
+            ),
           );
         },
       ),
