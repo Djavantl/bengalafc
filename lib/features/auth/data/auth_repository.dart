@@ -4,6 +4,13 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../../../core/services/api_client.dart';
 import '../../settings/models/app_user_model.dart';
 
+/// Camada responsável por autenticação e perfil do usuário.
+///
+/// As telas chamam este repository, e ele centraliza:
+/// - login OAuth em `/o/token/`;
+/// - cadastro em `/api/users/`;
+/// - busca do usuário logado em `/api/users/me/`;
+/// - atualização de perfil em `/api/users/update_profile/`.
 class AuthRepository {
   AuthRepository();
 
@@ -11,6 +18,7 @@ class AuthRepository {
   static final StreamController<AppUserModel?> _userStreamController =
       StreamController<AppUserModel?>.broadcast();
 
+  /// Stream observado pelo AuthGate para decidir entre LoginPage e HomePage.
   Stream<AppUserModel?> authStateChanges() async* {
     if (_currentUser == null && ApiClient.instance.isAuthenticated) {
       try {
@@ -46,6 +54,7 @@ class AuthRepository {
     try {
       _validateOAuthConfig();
 
+      // Password grant: a API recebe email/senha e devolve access_token.
       final response = await ApiClient.instance.post(
         '/o/token/',
         {
@@ -64,6 +73,7 @@ class AuthRepository {
 
       await ApiClient.instance.saveToken(accessToken);
 
+      // Depois do token, busca os dados reais do usuário para preencher a Home.
       final user = await _fetchProfile();
       _currentUser = user;
       _userStreamController.add(_currentUser);
@@ -84,6 +94,7 @@ class AuthRepository {
     required String lastName,
   }) async {
     try {
+      // Primeiro cria o usuário no backend.
       await ApiClient.instance.post(
         '/api/users/',
         {
@@ -96,6 +107,7 @@ class AuthRepository {
         requireAuth: false,
       );
 
+      // Depois reutiliza o fluxo de login para salvar token e carregar perfil.
       return signInWithEmailAndPassword(
         email: email,
         password: password,
@@ -110,6 +122,7 @@ class AuthRepository {
   }
 
   Future<void> signOut() async {
+    // Logout local: remove token salvo e avisa o AuthGate para voltar ao login.
     await ApiClient.instance.clearToken();
     _currentUser = null;
     _userStreamController.add(null);
@@ -164,6 +177,7 @@ class AuthRepository {
   }
 
   Future<AppUserModel> _fetchProfile() async {
+    // Endpoint usado após login/cadastro para montar o usuário local do app.
     final response = await ApiClient.instance.get('/api/users/me/');
     final data = jsonDecode(response.body);
 

@@ -5,6 +5,11 @@ import '../settings/models/app_user_model.dart';
 import 'data/auth_repository.dart';
 import 'pages/login_page.dart';
 
+/// Porta de entrada do app.
+///
+/// Observa o estado de autenticação e escolhe qual tela mostrar:
+/// - sem usuário: LoginPage;
+/// - com usuário: HomePage.
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
@@ -33,9 +38,11 @@ class _AuthGateState extends State<AuthGate> {
 
         final user = snapshot.data;
         if (user == null) {
+          // Sem token/perfil válido, o app começa pelo login.
           return const LoginPage();
         }
 
+        // Usuário autenticado, libera a experiência principal.
         return HomePage(
           user: user,
           onSignOut: _handleSignOut,

@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import '../data/auth_repository.dart';
 import 'register_page.dart';
 
+/// Tela inicial de autenticação.
+///
+/// Responsável apenas pelo login: coleta email/senha, valida os campos e
+/// delega a chamada real da API para o [AuthRepository].
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -32,6 +36,7 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = true);
 
     try {
+      // Faz login na API OAuth e salva o token no ApiClient.
       await _authRepository.signInWithEmailAndPassword(
         email: _emailController.text,
         password: _passwordController.text,
@@ -51,6 +56,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _openRegisterPage() {
+    // Cadastro é uma tela separada para manter o login simples e fácil de explicar.
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => const RegisterPage(),
@@ -73,6 +79,7 @@ class _LoginPageState extends State<LoginPage> {
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
+            // O scroll evita overflow quando o teclado abre no celular.
             return SingleChildScrollView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: EdgeInsets.fromLTRB(
@@ -206,8 +213,7 @@ class _LoginPageState extends State<LoginPage> {
                                         vertical: 16,
                                       ),
                                       shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(12),
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
                                     ),
                                     onPressed: _submit,

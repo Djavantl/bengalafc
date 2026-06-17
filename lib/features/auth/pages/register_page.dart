@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../data/auth_repository.dart';
 
+/// Tela de cadastro de usuário.
+///
+/// Cria o usuário na API e, em seguida, o repository faz login automático
+/// para já deixar o app autenticado.
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
 
@@ -35,6 +39,7 @@ class _RegisterPageState extends State<RegisterPage> {
     setState(() => _isLoading = true);
 
     try {
+      // Envia dados para /api/users/ e depois autentica em /o/token/.
       await _authRepository.signUpWithEmailAndPassword(
         email: _emailController.text,
         password: _passwordController.text,
@@ -68,6 +73,7 @@ class _RegisterPageState extends State<RegisterPage> {
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
+            // Mantém a tela usável em celulares pequenos quando o teclado abre.
             return SingleChildScrollView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: EdgeInsets.fromLTRB(
