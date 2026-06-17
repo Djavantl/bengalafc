@@ -1,6 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
-import '../data/lineup_local_storage.dart';
+import '../../../core/services/api_client.dart';
 import '../models/lineup_player_model.dart';
 
 class LineupSlot {
@@ -38,8 +39,6 @@ class LineupSlot {
 class LineupViewModel extends ChangeNotifier {
   static const formationOptions = ['4-3-3', '4-4-2', '3-5-2'];
 
-  final LineupLocalStorage _storage;
-
   String teamName = 'Bengala Stars';
   String selectedFormation = '4-3-3';
   String roundName = 'Rodada 1 - Fase de grupos';
@@ -47,13 +46,19 @@ class LineupViewModel extends ChangeNotifier {
   String? captainPlayerId;
   bool isSaved = false;
 
+  bool isLoading = false;
+  String? errorMessage;
+  int? activeStageId;
+  int? lineupId;
+  bool competitionFinished = false;
+
   late List<LineupSlot> _slots;
   late List<LineupPlayerModel> _availablePlayers;
 
-  LineupViewModel({LineupLocalStorage? storage})
-      : _storage = storage ?? LineupLocalStorage() {
-    _loadMockLineup();
-    _loadSavedLineup();
+  LineupViewModel() {
+    _slots = _buildSlotsForFormation(selectedFormation);
+    _availablePlayers = [];
+    loadData();
   }
 
   List<LineupSlot> get slots => List.unmodifiable(_slots);
@@ -72,6 +77,9 @@ class LineupViewModel extends ChangeNotifier {
 
   bool get isComplete => selectedCount == totalSlots;
 
+  bool get canEditLineup =>
+      !competitionFinished && activeStageId != null && !isLoading;
+
   String? get captainName {
     for (final player in selectedPlayers) {
       if (player.id == captainPlayerId) return player.name;
@@ -86,27 +94,341 @@ class LineupViewModel extends ChangeNotifier {
     return null;
   }
 
+  String _mapBackendPosition(String? backendPos) {
+    if (backendPos == null || backendPos.isEmpty) return 'ZAG';
+
+    final parts = backendPos.split(',');
+    final mapped = <String>{};
+
+    for (final part in parts) {
+      final pos = part.trim().toLowerCase();
+      if (pos == 'gk' ||
+          pos.contains('goalkeeper') ||
+          pos == 'goleiro' ||
+          pos == 'gol') {
+        mapped.add('GOL');
+      } else if (pos == 'mf' ||
+          pos.contains('midfielder') ||
+          pos == 'meia' ||
+          pos == 'mei') {
+        mapped.add('MEI');
+      } else if (pos == 'fw' ||
+          pos.contains('attacker') ||
+          pos.contains('forward') ||
+          pos == 'atacante' ||
+          pos == 'ata') {
+        mapped.add('ATA');
+      } else if (pos == 'ld') {
+        mapped.add('LD');
+      } else if (pos == 'le') {
+        mapped.add('LE');
+      } else if (pos == 'df' ||
+          pos.contains('defender') ||
+          pos == 'zagueiro' ||
+          pos == 'lateral' ||
+          pos == 'zag') {
+        mapped.add('ZAG');
+      } else {
+        mapped.add('ZAG');
+      }
+    }
+
+    return mapped.join(',');
+  }
+
+  bool _isPositionCompatible(String playerPos, String slotPos) {
+    final playerPositions = playerPos.split(',');
+    for (final pPos in playerPositions) {
+      if (pPos == slotPos) return true;
+      if ((pPos == 'ZAG' || pPos == 'LD' || pPos == 'LE') &&
+          (slotPos == 'ZAG' || slotPos == 'LD' || slotPos == 'LE')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  String _deduceFormation(List<LineupPlayerModel> players) {
+    int defenders = 0;
+    int midfielders = 0;
+    int attackers = 0;
+    for (final p in players) {
+      final pos = p.position;
+      final parts = pos.split(',');
+      if (parts.any((x) => x == 'ZAG' || x == 'LD' || x == 'LE')) {
+        defenders++;
+      } else if (parts.any((x) => x == 'MEI')) {
+        midfielders++;
+      } else if (parts.any((x) => x == 'ATA')) {
+        attackers++;
+      }
+    }
+    final candidate = '$defenders-$midfielders-$attackers';
+    if (formationOptions.contains(candidate)) {
+      return candidate;
+    }
+    return '4-3-3';
+  }
+
+  final Set<String> _loadedPositions = {};
+  final Set<String> _loadingPositions = {};
+
+  bool isPositionLoading(String slotPos) => _loadingPositions.contains(slotPos);
+
+  String _mapSlotPosToApiPos(String slotPos) {
+    switch (slotPos) {
+      case 'GOL':
+        return 'GK';
+      case 'ZAG':
+      case 'LD':
+      case 'LE':
+        return 'DF';
+      case 'MEI':
+        return 'MF';
+      case 'ATA':
+        return 'FW';
+      default:
+        return 'DF';
+    }
+  }
+
+  Future<void> loadPlayersForPosition(String slotPos) async {
+    if (competitionFinished) {
+      errorMessage = 'A competição acabou. Não há como escalar times agora.';
+      notifyListeners();
+      return;
+    }
+
+    if (activeStageId == null) {
+      errorMessage = 'Nenhuma rodada atual cadastrada no servidor.';
+      notifyListeners();
+      return;
+    }
+
+    if (_loadedPositions.contains(slotPos) ||
+        _loadingPositions.contains(slotPos)) {
+      return;
+    }
+
+    _loadingPositions.add(slotPos);
+    notifyListeners();
+
+    try {
+      final apiPos = _mapSlotPosToApiPos(slotPos);
+      final urlPath = '/api/players/?position=$apiPos&stage=$activeStageId';
+      final response = await ApiClient.instance.get(urlPath);
+
+      final List<dynamic> playersJson = jsonDecode(response.body);
+
+      final List<LineupPlayerModel> loadedList =
+          playersJson.map<LineupPlayerModel>((data) {
+        final id = data['id']?.toString() ?? '';
+        final name = data['name']?.toString() ?? '';
+        final nationalTeam = (data['team_detail']?['code'] ??
+                data['team_detail']?['name'] ??
+                data['nationality'] ??
+                'BRA')
+            .toString()
+            .toUpperCase();
+        final position = _mapBackendPosition(data['position']?.toString());
+        const averagePoints = 0.0;
+        const selectedPercentage = 0.0;
+        final photoUrl = data['photo']?.toString();
+
+        return LineupPlayerModel(
+          id: id,
+          name: name,
+          nationalTeam: nationalTeam,
+          position: position,
+          averagePoints: averagePoints,
+          selectedPercentage: selectedPercentage,
+          isStarter: false,
+          photoUrl: photoUrl,
+        );
+      }).toList();
+
+      final existingIds = _availablePlayers.map((p) => p.id).toSet();
+      for (final p in loadedList) {
+        if (!existingIds.contains(p.id)) {
+          _availablePlayers.add(p);
+        }
+      }
+
+      _loadedPositions.add(slotPos);
+    } catch (e, stack) {
+      debugPrint('Error loading players for position $slotPos: $e');
+      debugPrint(stack.toString());
+    } finally {
+      _loadingPositions.remove(slotPos);
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadData() async {
+    if (!ApiClient.instance.isAuthenticated) {
+      debugPrint('User is not authenticated. Skipping API load.');
+      return;
+    }
+
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
+
+    try {
+      await loadLineup();
+    } catch (e) {
+      errorMessage = e.toString();
+      debugPrint('Error loading API data: $e');
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadLineup() async {
+    try {
+      final stateResponse = await ApiClient.instance.get('/api/stages/state/');
+      final stateJson = jsonDecode(stateResponse.body);
+      if (stateJson is! Map) {
+        errorMessage = 'Não foi possível carregar o estado da competição.';
+        _clearLocalLineupState();
+        notifyListeners();
+        return;
+      }
+
+      competitionFinished = stateJson['competition_finished'] == true;
+      if (competitionFinished) {
+        activeStageId = null;
+        roundName = 'Competição encerrada';
+        marketStatus = 'Escalação bloqueada';
+        errorMessage = 'A competição acabou. Não há como escalar times agora.';
+        _clearLocalLineupState(keepStage: true);
+        _availablePlayers.clear();
+        _loadedPositions.clear();
+        _loadingPositions.clear();
+        notifyListeners();
+        return;
+      }
+
+      final currentStage = stateJson['current_stage'];
+      if (currentStage is! Map) {
+        activeStageId = null;
+        marketStatus = 'Mercado fechado';
+        errorMessage = 'Nenhuma rodada atual cadastrada no servidor.';
+        _clearLocalLineupState();
+        notifyListeners();
+        return;
+      }
+
+      final stageId = (currentStage['id'] as num).toInt();
+      if (activeStageId != null && activeStageId != stageId) {
+        _availablePlayers.clear();
+        _loadedPositions.clear();
+        _loadingPositions.clear();
+      }
+      activeStageId = stageId;
+      roundName = currentStage['name']?.toString() ?? roundName;
+      marketStatus = 'Mercado aberto';
+
+      try {
+        final lineupResponse = await ApiClient.instance
+            .get('/api/lineups/by-stage/$activeStageId/');
+        final Map<String, dynamic> lineupJson = jsonDecode(lineupResponse.body);
+
+        lineupId = lineupJson['id'] as int?;
+        final List<dynamic> players = lineupJson['players'] ?? [];
+        final captainIdVal = lineupJson['captain']?.toString();
+
+        final List<LineupPlayerModel> loadedPlayers = [];
+        for (final p in players) {
+          final detail = p['player_detail'];
+          if (detail != null) {
+            final id = detail['id']?.toString() ?? '';
+            final name = detail['name']?.toString() ?? '';
+            final nationalTeam = (detail['team_detail']?['code'] ??
+                    detail['team_detail']?['name'] ??
+                    detail['nationality'] ??
+                    'BRA')
+                .toString()
+                .toUpperCase();
+            final position =
+                _mapBackendPosition(detail['position']?.toString());
+            final photoUrl = detail['photo']?.toString();
+
+            loadedPlayers.add(LineupPlayerModel(
+              id: id,
+              name: name,
+              nationalTeam: nationalTeam,
+              position: position,
+              averagePoints: 0.0,
+              selectedPercentage: 0.0,
+              isStarter: true,
+              photoUrl: photoUrl,
+            ));
+          }
+        }
+
+        if (loadedPlayers.isNotEmpty) {
+          selectedFormation = _deduceFormation(loadedPlayers);
+          _slots = _buildSlotsForFormation(selectedFormation);
+
+          for (final player in loadedPlayers) {
+            final slotIndex = _slots.indexWhere((slot) =>
+                slot.player == null &&
+                _isPositionCompatible(player.position, slot.position));
+            if (slotIndex != -1) {
+              _slots[slotIndex] = _slots[slotIndex].copyWith(player: player);
+            }
+          }
+
+          captainPlayerId = captainIdVal;
+          isSaved = isComplete;
+        } else {
+          _clearLocalLineupState(keepStage: true);
+        }
+      } on ApiException catch (e) {
+        if (e.statusCode == 404) {
+          _clearLocalLineupState(keepStage: true);
+        } else {
+          rethrow;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading lineup: $e');
+      rethrow;
+    }
+  }
+
   List<LineupPlayerModel> optionsForSlot(LineupSlot slot) {
-    return _availablePlayers
-        .where((player) => player.position == slot.position)
+    final filteredByPos = _availablePlayers
+        .where(
+            (player) => _isPositionCompatible(player.position, slot.position))
+        .toList();
+
+    final finalOptions = filteredByPos
         .where(
           (player) =>
               player.id == slot.player?.id ||
-              !_slots.any((selectedSlot) => selectedSlot.player?.id == player.id),
+              !_slots
+                  .any((selectedSlot) => selectedSlot.player?.id == player.id),
         )
         .toList(growable: false)
       ..sort((a, b) => b.averagePoints.compareTo(a.averagePoints));
+    return finalOptions;
   }
 
   void selectPlayer(String slotId, LineupPlayerModel player) {
+    if (!canEditLineup) return;
+
     final index = _slots.indexWhere((slot) => slot.id == slotId);
     if (index == -1) return;
 
     final slot = _slots[index];
-    if (slot.position != player.position) return;
+    if (!_isPositionCompatible(player.position, slot.position)) return;
 
     final repeatedPlayerIndex = _slots.indexWhere(
-      (otherSlot) => otherSlot.id != slotId && otherSlot.player?.id == player.id,
+      (otherSlot) =>
+          otherSlot.id != slotId && otherSlot.player?.id == player.id,
     );
     if (repeatedPlayerIndex != -1) return;
 
@@ -117,6 +439,8 @@ class LineupViewModel extends ChangeNotifier {
   }
 
   void clearSlot(String slotId) {
+    if (!canEditLineup) return;
+
     final index = _slots.indexWhere((slot) => slot.id == slotId);
     if (index == -1) return;
 
@@ -131,6 +455,8 @@ class LineupViewModel extends ChangeNotifier {
   }
 
   void setCaptain(String playerId) {
+    if (!canEditLineup) return;
+
     if (!selectedPlayers.any((player) => player.id == playerId)) return;
 
     captainPlayerId = playerId;
@@ -139,6 +465,8 @@ class LineupViewModel extends ChangeNotifier {
   }
 
   void changeFormation(String formation) {
+    if (!canEditLineup) return;
+
     if (!formationOptions.contains(formation)) return;
 
     selectedFormation = formation;
@@ -155,239 +483,100 @@ class LineupViewModel extends ChangeNotifier {
   }
 
   Future<void> saveLineup() async {
-    await _storage.saveLineup(
-      teamName: teamName,
-      formation: selectedFormation,
-      selectedCount: selectedCount,
-      captainName: captainName,
-      captainPlayerId: captainPlayerId,
-      selectedPlayerIdsBySlot: {
-        for (final slot in _slots)
-          if (slot.player != null) slot.id: slot.player!.id,
-      },
-    );
-
-    isSaved = true;
-    notifyListeners();
-  }
-
-  Future<void> _loadSavedLineup() async {
-    final savedLineup = await _storage.loadLineup();
-    if (!savedLineup.isMounted) return;
-
-    teamName = savedLineup.teamName;
-    selectedFormation = formationOptions.contains(savedLineup.formation)
-        ? savedLineup.formation
-        : selectedFormation;
-    _slots = _buildSlotsForFormation(selectedFormation);
-
-    for (var index = 0; index < _slots.length; index++) {
-      final slot = _slots[index];
-      final playerId = savedLineup.selectedPlayerIdsBySlot[slot.id];
-      if (playerId == null) continue;
-
-      final player = _playerById(playerId);
-      if (player == null || player.position != slot.position) continue;
-
-      _slots[index] = slot.copyWith(player: player.copyWith(isStarter: true));
+    if (competitionFinished) {
+      throw Exception('A competição acabou. Não há como escalar times agora.');
     }
 
-    captainPlayerId = selectedPlayers.any(
-      (player) => player.id == savedLineup.captainPlayerId,
-    )
-        ? savedLineup.captainPlayerId
-        : selectedPlayers.isEmpty
-            ? null
-            : selectedPlayers.first.id;
-    isSaved = isComplete;
+    isLoading = true;
+    errorMessage = null;
     notifyListeners();
-  }
 
-  LineupPlayerModel? _playerById(String id) {
-    for (final player in _availablePlayers) {
-      if (player.id == id) return player;
+    try {
+      final playerIds = selectedPlayers.map((p) => int.parse(p.id)).toList();
+      final captainIdVal =
+          captainPlayerId != null ? int.parse(captainPlayerId!) : null;
+
+      if (activeStageId == null) {
+        final stateResponse =
+            await ApiClient.instance.get('/api/stages/state/');
+        final stateJson = jsonDecode(stateResponse.body);
+        if (stateJson is Map && stateJson['competition_finished'] == true) {
+          competitionFinished = true;
+          throw Exception(
+            'A competição acabou. Não há como escalar times agora.',
+          );
+        }
+        final currentStage =
+            stateJson is Map ? stateJson['current_stage'] : null;
+        if (currentStage is Map) {
+          activeStageId = (currentStage['id'] as num).toInt();
+        } else {
+          throw Exception(
+              'Nenhuma rodada atual cadastrada no servidor para salvar a escalação.');
+        }
+      }
+
+      final body = {
+        'stage': activeStageId,
+        'captain_id': captainIdVal,
+        'player_ids': playerIds,
+      };
+
+      if (lineupId == null) {
+        final response = await ApiClient.instance.post('/api/lineups/', body);
+        final Map<String, dynamic> responseJson = jsonDecode(response.body);
+        lineupId = responseJson['id'] as int?;
+      } else {
+        await ApiClient.instance.patch('/api/lineups/$lineupId/', body);
+      }
+
+      isSaved = true;
+    } catch (e) {
+      errorMessage = e.toString();
+      isSaved = false;
+      rethrow;
+    } finally {
+      isLoading = false;
+      notifyListeners();
     }
-    return null;
   }
 
-  void _loadMockLineup() {
-    _slots = _buildSlotsForFormation(selectedFormation);
+  Future<void> clearLineup() async {
+    if (competitionFinished) {
+      throw Exception('A competição acabou. Não há como escalar times agora.');
+    }
 
-    _availablePlayers = const [
-      LineupPlayerModel(
-        id: 'emi-martinez',
-        name: 'E. Martinez',
-        nationalTeam: 'ARG',
-        position: 'GOL',
-        averagePoints: 6.8,
-        selectedPercentage: 31,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'alisson',
-        name: 'Alisson',
-        nationalTeam: 'BRA',
-        position: 'GOL',
-        averagePoints: 6.4,
-        selectedPercentage: 24,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'hakimi',
-        name: 'Hakimi',
-        nationalTeam: 'MAR',
-        position: 'LD',
-        averagePoints: 5.9,
-        selectedPercentage: 21,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'cancelo',
-        name: 'Cancelo',
-        nationalTeam: 'POR',
-        position: 'LD',
-        averagePoints: 5.3,
-        selectedPercentage: 16,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'van-dijk',
-        name: 'Van Dijk',
-        nationalTeam: 'HOL',
-        position: 'ZAG',
-        averagePoints: 5.7,
-        selectedPercentage: 18,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'marquinhos',
-        name: 'Marquinhos',
-        nationalTeam: 'BRA',
-        position: 'ZAG',
-        averagePoints: 5.4,
-        selectedPercentage: 26,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'theo',
-        name: 'Theo Hernandez',
-        nationalTeam: 'FRA',
-        position: 'LE',
-        averagePoints: 5.5,
-        selectedPercentage: 19,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'nuno-mendes',
-        name: 'Nuno Mendes',
-        nationalTeam: 'POR',
-        position: 'LE',
-        averagePoints: 5.2,
-        selectedPercentage: 15,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'gvardiol',
-        name: 'Gvardiol',
-        nationalTeam: 'CRO',
-        position: 'ZAG',
-        averagePoints: 5.1,
-        selectedPercentage: 14,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'bellingham',
-        name: 'Bellingham',
-        nationalTeam: 'ING',
-        position: 'MEI',
-        averagePoints: 7.2,
-        selectedPercentage: 39,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'de-bruyne',
-        name: 'De Bruyne',
-        nationalTeam: 'BEL',
-        position: 'MEI',
-        averagePoints: 6.9,
-        selectedPercentage: 28,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'valverde',
-        name: 'Valverde',
-        nationalTeam: 'URU',
-        position: 'MEI',
-        averagePoints: 5.8,
-        selectedPercentage: 17,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'musiala',
-        name: 'Musiala',
-        nationalTeam: 'ALE',
-        position: 'MEI',
-        averagePoints: 6.5,
-        selectedPercentage: 22,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'rodri',
-        name: 'Rodri',
-        nationalTeam: 'ESP',
-        position: 'MEI',
-        averagePoints: 5.6,
-        selectedPercentage: 16,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'mbappe',
-        name: 'Mbappe',
-        nationalTeam: 'FRA',
-        position: 'ATA',
-        averagePoints: 8.1,
-        selectedPercentage: 52,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'vinicius',
-        name: 'Vini Jr',
-        nationalTeam: 'BRA',
-        position: 'ATA',
-        averagePoints: 7.8,
-        selectedPercentage: 48,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'haaland',
-        name: 'Haaland',
-        nationalTeam: 'NOR',
-        position: 'ATA',
-        averagePoints: 7.4,
-        selectedPercentage: 34,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'lautaro',
-        name: 'Lautaro',
-        nationalTeam: 'ARG',
-        position: 'ATA',
-        averagePoints: 6.2,
-        selectedPercentage: 23,
-        isStarter: false,
-      ),
-      LineupPlayerModel(
-        id: 'son',
-        name: 'Son',
-        nationalTeam: 'COR',
-        position: 'ATA',
-        averagePoints: 6.1,
-        selectedPercentage: 20,
-        isStarter: false,
-      ),
-    ];
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
 
+    try {
+      if (lineupId != null) {
+        await ApiClient.instance.delete('/api/lineups/$lineupId/');
+      }
+      _clearLocalLineupState(keepStage: true);
+    } catch (e) {
+      errorMessage = e.toString();
+      rethrow;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  void _clearLocalLineupState({bool keepStage = false}) {
+    lineupId = null;
     captainPlayerId = null;
+    selectedFormation = '4-3-3';
+    _slots = _buildSlotsForFormation(selectedFormation);
+    isSaved = false;
+    if (!keepStage) {
+      activeStageId = null;
+      roundName = 'Rodada 1 - Fase de grupos';
+      _availablePlayers.clear();
+      _loadedPositions.clear();
+      _loadingPositions.clear();
+    }
   }
 
   List<LineupSlot> _buildSlotsForFormation(

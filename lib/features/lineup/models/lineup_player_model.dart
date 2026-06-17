@@ -7,6 +7,7 @@ class LineupPlayerModel {
     required this.averagePoints,
     required this.selectedPercentage,
     required this.isStarter,
+    this.photoUrl,
   });
 
   final String id;
@@ -16,6 +17,7 @@ class LineupPlayerModel {
   final double averagePoints;
   final double selectedPercentage;
   final bool isStarter;
+  final String? photoUrl;
 
   LineupPlayerModel copyWith({
     String? id,
@@ -25,6 +27,7 @@ class LineupPlayerModel {
     double? averagePoints,
     double? selectedPercentage,
     bool? isStarter,
+    String? photoUrl,
   }) {
     return LineupPlayerModel(
       id: id ?? this.id,
@@ -34,6 +37,7 @@ class LineupPlayerModel {
       averagePoints: averagePoints ?? this.averagePoints,
       selectedPercentage: selectedPercentage ?? this.selectedPercentage,
       isStarter: isStarter ?? this.isStarter,
+      photoUrl: photoUrl ?? this.photoUrl,
     );
   }
 }
