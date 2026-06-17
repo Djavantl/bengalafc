@@ -1,69 +1,41 @@
 # BengalaFC Fantasy
 
-Aplicação Flutter de fantasy game baseada na Copa do Mundo 2026.
+Aplicação Flutter de fantasy game baseada na Copa do Mundo 2026, desenvolvida por **Sávio Lopes**, **Djavan** e **Jader** para a disciplina de **Programação para Dispositivos Móveis**.
 
-## Sprint 6 — Acessibilidade
-
-Nesta etapa foi implementado suporte completo a acessibilidade na aplicação, com foco em leitores de tela (TalkBack/VoiceOver) e fonte dinâmica.
-
-### O que foi feito
-
-- Semantics adicionados em todas as telas da aplicação.
-- Suporte a TalkBack (Android) e VoiceOver (iOS) validado manualmente.
-- Localização configurada para Português (Brasil) — labels do sistema lidos em PT-BR.
-- Fonte dinâmica respeitada — o app acompanha o tamanho de fonte definido nas configurações do dispositivo.
-
-### Telas cobertas
-
-| Tela | Principais ajustes |
-|---|---|
-| Login | Ícone decorativo excluído, título+subtítulo agrupados, loading anunciado via `liveRegion` |
-| Home | Label do `RichText` da AppBar, métricas agrupadas com `MergeSemantics`, partidas lidas como frase completa |
-| Ranking | Cada linha lida como "Posição X, Nome, Y pontos", elementos visuais redundantes excluídos |
-| Fases | `ExpansionTile` anuncia estado expandido/recolhido, loading dos jogos anunciado por fase |
-| Perfil | Avatar com label dinâmico por estado, campo e-mail com hint de não editável, botão salvar anuncia loading |
-| Escalação | Jogadores lidos com nome, posição e pontuação, ações de capitão e remoção com labels descritivos |
-
-### Padrões aplicados
-
-- **`Semantics(excludeSemantics: true)`** — ícones e elementos puramente decorativos.
-- **`ExcludeSemantics`** — filhos redundantes quando o pai já tem label completo.
-- **`MergeSemantics`** — agrupa label + valor para leitura como frase única.
-- **`Semantics(liveRegion: true)`** — anuncia mudanças de estado (loading, erros) automaticamente.
-- **`tooltip`** em `IconButton` — já serve como label acessível nativo do Flutter.
-- Labels dinâmicos em botões que mudam de estado (salvar, editar, montar time).
-
-### Como validar
-
-```bash
-flutter pub get
-flutter run
-```
-
-Depois disso:
-
-1. Ative o **TalkBack** no Android: Configurações → Acessibilidade → TalkBack.
-2. Navegue com **swipe para direita** (próximo elemento) e **swipe para esquerda** (anterior).
-3. Verifique que cada elemento interativo é anunciado com contexto completo.
-4. Aumente o tamanho da fonte em Configurações → Acessibilidade → Tamanho da fonte e confirme que o layout não quebra.
+O jogador monta sua escalação com atletas reais da Copa, acompanha as partidas, acumula pontos e compete no ranking geral contra outros usuários.
 
 ---
 
-## Sprint 3 — Temas
+## Funcionalidades
 
-Nesta etapa foi implementada a base visual da aplicação com foco em organização do tema e responsividade.
+- Autenticação com e-mail e senha (Firebase Auth)
+- Escalação de jogadores por fase com definição de capitão
+- Pontuação automática baseada no desempenho real dos atletas
+- Histórico de pontos por fase
+- Ranking geral entre todos os usuários
+- Acompanhamento de partidas e resultados por fase
+- Perfil de usuário com foto personalizável
+- Tema claro e escuro
+- Suporte completo a acessibilidade (TalkBack/VoiceOver)
 
-### O que foi feito
+---
 
-- Tema centralizado em `AppColors`.
-- `ThemeData` separado para modo claro e escuro.
-- Alternância de tema via `ThemeNotifier`.
-- Home responsiva com `LayoutBuilder`.
-- Tela inicial simples para demonstração visual da sprint.
+## Telas
+
+| Tela | Descrição |
+|---|---|
+| Login / Cadastro | Autenticação com e-mail e senha |
+| Home | Resumo da rodada atual, escalação e partidas |
+| Escalação | Montagem e edição do time por fase |
+| Fases | Lista de fases e partidas da competição |
+| Ranking | Classificação geral com pontuação de todos os usuários |
+| Perfil | Edição de nome e foto de perfil |
+
+---
 
 ## Design Tokens
 
-As cores da aplicação ficam centralizadas no arquivo `lib/core/theme/app_colors.dart`.
+As cores da aplicação ficam centralizadas em `lib/core/theme/app_colors.dart`.
 
 | Token | Light | Dark |
 |---|---:|---:|
@@ -77,25 +49,68 @@ As cores da aplicação ficam centralizadas no arquivo `lib/core/theme/app_color
 | Draw | `#9E9E9E` | `#9E9E9E` |
 | Lose | `#C0392B` | `#C0392B` |
 
-## Estrutura visual
+---
 
-A tela inicial foi criada para mostrar, de forma simples, os entregáveis da Sprint 3:
+## Acessibilidade
 
-- cartão principal com pontuação da rodada;
-- cards de conteúdo vazios para demonstrar o layout;
-- adaptação entre 1 e 2 colunas de acordo com a largura da tela;
-- botão de alternância entre claro e escuro.
+O app tem suporte completo a leitores de tela e fonte dinâmica.
 
-## Como validar
+### O que foi implementado
+
+- **Semantics** em todas as telas com labels descritivos e contextuais
+- **Localização em PT-BR** — labels do sistema lidos em português pelo TalkBack
+- **Fonte dinâmica** — respeita o tamanho de fonte definido nas configurações do dispositivo
+- **TalkBack (Android)** e **VoiceOver (iOS)** validados manualmente
+
+### Padrões aplicados
+
+| Padrão | Uso |
+|---|---|
+| `Semantics(excludeSemantics: true)` | Ícones e elementos decorativos |
+| `ExcludeSemantics` | Filhos redundantes quando o pai já tem label completo |
+| `MergeSemantics` | Agrupa label + valor para leitura como frase única |
+| `Semantics(liveRegion: true)` | Anuncia mudanças de estado (loading, erros) |
+| `tooltip` em `IconButton` | Label acessível nativo do Flutter |
+| Labels dinâmicos | Botões que mudam de estado (salvar, editar, montar time) |
+
+### Como testar com TalkBack
+
+1. Ative o TalkBack: **Configurações → Acessibilidade → TalkBack**
+2. Navegue com **swipe para direita** (próximo elemento) e **swipe para esquerda** (anterior)
+3. **Toque duplo** para ativar um elemento
+4. Verifique que cada elemento interativo é anunciado com contexto completo
+5. Aumente a fonte em **Configurações → Acessibilidade → Tamanho da fonte** e confirme que o layout não quebra
+
+---
+
+## Como rodar
 
 ```bash
 flutter pub get
 flutter run
 ```
 
-Depois disso:
+### Pré-requisitos
 
-1. Clique no ícone de tema na `AppBar` para alternar entre claro e escuro.
-2. Redimensione a janela do navegador.
-3. Verifique que a Home muda entre layout em coluna única e duas colunas quando a largura passa de 600px.
-4. Confirme que as cores seguem os tokens definidos em `AppColors`.
+- Flutter 3.x
+- Android SDK ou dispositivo físico conectado
+- Arquivo `.env` com as variáveis de ambiente da API
+- Projeto Firebase configurado (`firebase_options.dart`)
+
+---
+
+## Estrutura do projeto
+
+```
+lib/
+  core/
+    services/       # ApiClient, ScoringService, RankingService
+    theme/          # AppColors, AppTheme, ThemeNotifier
+  features/
+    auth/           # Login, cadastro, AuthGate
+    home/           # Tela principal
+    lineup/         # Escalação
+    phases/         # Fases e partidas
+    scoring/        # Pontuação e ranking
+    settings/       # Perfil do usuário
+```
